@@ -35,6 +35,57 @@ TLA+ model checking **exhaustively explores every reachable state**, including f
 [Execute or Reject]                  SAFE → execute; UNSAFE → block + counterexample
 ```
 
+### Formal Methods across the SRE Lifecycle
+
+Each phase of an SRE change/incident maps to a specific formal method. Together they form a closed loop:
+
+```mermaid
+flowchart LR
+    subgraph S1["① Define Spec"]
+        direction TB
+        A1["SRE defines:<br/>SLO / Dependencies<br/>Fault modes / Env constraints"]
+        M1{{"Realizability Check"}}
+        R1["<i>Can these specs be<br/>satisfied simultaneously?</i><br/><br/>YES → proceed to ②<br/>NO → relax specs & retry"]
+        A1 --> M1 --> R1
+    end
+
+    subgraph S2["② Build Controller"]
+        direction TB
+        A2["Input: specs only<br/>No hand-written SOP"]
+        M2{{"Reactive Synthesis"}}
+        R2["<i>Auto-generate a strategy<br/>guaranteed to be correct</i><br/><br/>Output: correct-by-construction<br/>state machine"]
+        A2 --> M2 --> R2
+    end
+
+    subgraph S3["③ Runtime Ops"]
+        direction TB
+        A3["Agent receives<br/>event / alert"]
+        M3{{"Bounded Model Checking"}}
+        R3["<i>Will this action violate<br/>any invariant within k steps?</i><br/><br/>APPROVE → execute<br/>REJECT → block + counterexample"]
+        A3 --> M3 --> R3
+    end
+
+    subgraph S4["④ Post-Incident"]
+        direction TB
+        A4["Fault occurred<br/>Root-cause & prevention"]
+        M4{{"BMC Reverse +<br/>Counterexample Analysis"}}
+        R4["<i>How did the system reach<br/>the fault state step by step?<br/>Which path can we block?</i><br/><br/>Output: new specs + fault modes"]
+        A4 --> M4 --> R4
+    end
+
+    S1 -->|"specs"| S2
+    S2 -->|"controller"| S3
+    S3 -->|"incident"| S4
+    S4 -.->|"🔄 new specs + fault modes"| S1
+
+    style M1 fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    style M2 fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    style M3 fill:#fff3e0,stroke:#e65100,color:#bf360c
+    style M4 fill:#fce4ec,stroke:#c62828,color:#b71c1c
+```
+
+> **Shared assets across all phases:** `SREInfrastructure.tla` (system state space) + `Properties.tla` (safety/liveness specs)
+
 ### Five Demo Scenarios
 
 | # | Scenario | What TLA+ Catches | Verification Mode |
@@ -69,6 +120,64 @@ TLA+ model checking **exhaustively explores every reachable state**, including f
 - 多步计划中的竞态条件对人工推理几乎不可见
 
 TLA+ 模型检查**穷举探索每一个可达状态**，包括故障场景、并发交错和级联效应。
+
+### 形式化方法在 SRE 生命周期中的应用
+
+SRE 变更/应急的每个阶段对应一种形式化方法，四个阶段形成闭环：
+
+```mermaid
+flowchart LR
+    subgraph S1["① 定义规约"]
+        direction TB
+        A1["SRE 定义:<br/>SLO / 依赖拓扑<br/>故障模式 / 环境约束"]
+        M1{{"Realizability Check"}}
+        R1["<i>这组规约有没有内在矛盾?<br/>环境是否允许同时满足?</i><br/><br/>YES → 进入②<br/>NO → 放松规约后重试"]
+        A1 --> M1 --> R1
+    end
+
+    subgraph S2["② 合成控制器"]
+        direction TB
+        A2["输入: 仅规约<br/>不用人写 SOP"]
+        M2{{"Reactive Synthesis"}}
+        R2["<i>不写 SOP, 直接从安全要求<br/>自动生成保证正确的策略</i><br/><br/>输出: correct-by-construction<br/>状态机"]
+        A2 --> M2 --> R2
+    end
+
+    subgraph S3["③ 在线执行"]
+        direction TB
+        A3["Agent 收到<br/>事件 / 告警"]
+        M3{{"Bounded Model Checking"}}
+        R3["<i>这步操作执行后 k 步内<br/>会不会违反安全约束?</i><br/><br/>APPROVE → 执行<br/>REJECT → 阻断 + 反例路径"]
+        A3 --> M3 --> R3
+    end
+
+    subgraph S4["④ 事后复盘"]
+        direction TB
+        A4["故障已发生<br/>找根因 / 防复发"]
+        M4{{"BMC 逆向 +<br/>反例分析"}}
+        R4["<i>系统怎么一步步走到故障态?<br/>哪条路径可以被堵住?</i><br/><br/>输出: 补充规约 + 新故障模式"]
+        A4 --> M4 --> R4
+    end
+
+    S1 -->|"规约"| S2
+    S2 -->|"控制器"| S3
+    S3 -->|"故障"| S4
+    S4 -.->|"🔄 新规约 + 新故障模式"| S1
+
+    style M1 fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    style M2 fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    style M3 fill:#fff3e0,stroke:#e65100,color:#bf360c
+    style M4 fill:#fce4ec,stroke:#c62828,color:#b71c1c
+```
+
+> **贯穿全流程的共享资产：** `SREInfrastructure.tla`（系统状态空间）+ `Properties.tla`（安全性/活性规约）
+
+| 阶段 | 关键业务活动 | 形式化方法 | 回答的问题 |
+|---|---|---|---|
+| ① 定义规约 | SRE 写 SLO + 约束 | Realizability Check | 这组规约有解吗？ |
+| ② 合成控制器 | 从规约生成执行策略 | Reactive Synthesis | 不写 SOP，能自动生成保证正确的策略吗？ |
+| ③ 在线执行 | Agent 做决策并操作 | BMC | 这步操作 k 步内安全吗？ |
+| ④ 事后复盘 | 分析故障 + 防复发 | BMC 逆向 + 反例分析 | 怎么坏的？哪条路径能堵住？ |
 
 ### 五个 Demo 场景
 
