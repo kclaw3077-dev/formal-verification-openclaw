@@ -3,7 +3,7 @@
 SCENARIOS = {
     # ── 场景 1 ──────────────────────────────────────────────────────────
     "scenario-1": {
-        "phase": "① 可实现性检查",
+        "phase": "① 定义 SLO",
         "title": "规约冲突检测",
         "subtitle": "大促前规约验证",
         "description": (
@@ -51,6 +51,9 @@ SCENARIOS = {
                     "迫使可用性降至 99.99% 以下。"
                 ),
                 "agent_action": "define_slo(availability=99.99%, latency_p99<200ms, consistency=strong)",
+                "sre_context": "大促前，SRE 团队为支付链路定义三个 SLO：99.99% 可用性、P99 延迟 < 200ms、强一致性。系统采用双 AZ 部署（东区主、西区备）。",
+                "key_question": "在当前双 AZ 部署下，这三个 SLO 能同时满足吗？",
+                "guarantee": "❌ 不能保证。AZ 故障切换时，同步复制带来 150-300ms 跨区延迟，导致 P99 < 200ms 与强一致性、99.99% 可用性形成不可能三角。",
             },
             2: {
                 "title": "放松规约",
@@ -61,6 +64,9 @@ SCENARIOS = {
                     "重新检查确认放松后的规约集可实现。"
                 ),
                 "agent_action": "relax_spec(critical_path=strong+500ms, query_path=eventual+200ms)",
+                "sre_context": "团队调整方案：支付写入保持强一致性但放宽 P99 至 500ms；非关键查询路径使用最终一致性，P99 < 200ms。",
+                "key_question": "放宽后的规约组合能同时满足吗？",
+                "guarantee": "✅ 可以保证。放宽后的规约不再冲突——强一致性仅适用于支付写入路径，该路径允许更高延迟。",
             },
         },
         "violations": {
@@ -125,7 +131,7 @@ SCENARIOS = {
 
     # ── 场景 2 ──────────────────────────────────────────────────────────
     "scenario-2": {
-        "phase": "② 反应式合成",
+        "phase": "② 生成执行策略",
         "title": "弹性策略合成",
         "subtitle": "自动生成正确的弹性控制器",
         "description": (
@@ -172,6 +178,9 @@ SCENARIOS = {
                     "NoSimultaneousUpdatesOnChain）输入反应式合成引擎。"
                 ),
                 "agent_action": "synthesize(env_model={traffic:1x-10x, max_pods:20}, safety_specs=[AvailabilityFloor, MinimumRedundancy, NoSimultaneousUpdatesOnChain])",
+                "sre_context": "基于场景 1 验证过的 SLO，团队需要为大促准备自动弹性伸缩策略。流量预计从 1x 飙升到 10x。团队不想手写 runbook，而是输入安全要求让系统自动生成正确的策略。",
+                "key_question": "能否自动生成一个在 1x-10x 任意流量下都满足所有安全约束的伸缩策略？",
+                "guarantee": "✅ 可以生成。合成引擎接受环境模型和安全规约，开始博弈求解。",
             },
             2: {
                 "title": "发现互斥约束",
@@ -181,6 +190,9 @@ SCENARIOS = {
                     "任何并发的扩缩容操作会进一步临时降低容量，违反安全下限。"
                 ),
                 "agent_action": "synthesis_result: guard(traffic > 8x → mutex(scale, rolling_update))",
+                "sre_context": "策略生成过程中发现一个关键约束：当流量超过 8x 时，扩容和滚动更新操作互斥。在 8x 流量下，滚动更新期间的有效容量恰好压线可用性阈值——任何并发扩容都会突破安全线。",
+                "key_question": "极端流量下，扩容与部署操作之间是否存在隐藏的互斥约束？",
+                "guarantee": "✅ 发现隐藏约束：流量 > 8x 时扩容和滚动更新互斥。此约束原始 runbook 中未记录，如遗漏很可能导致大促事故。",
             },
             3: {
                 "title": "生成完整控制器",
@@ -190,6 +202,9 @@ SCENARIOS = {
                     "以及 8 倍流量互斥守卫。控制器是 correct-by-construction 的。"
                 ),
                 "agent_action": "output: StateMachine(states=4, transitions=12, guards=6)",
+                "sre_context": "完整的弹性控制器以状态机形式生成，包含 4 条守卫规则，覆盖所有流量区间。包括 8x 互斥约束、依赖排序扩容（inventory 先于 order）、滚动更新前容量预检查。",
+                "key_question": "生成的控制器能否处理所有可能的流量模式并保持安全不变量？",
+                "guarantee": "✅ 正确性由构造保证。控制器包含 5 个状态、8 条转换、4 条守卫。每个可达状态都满足所有安全属性。",
             },
         },
         "violations": {},
@@ -235,7 +250,7 @@ SCENARIOS = {
 
     # ── 场景 3 ──────────────────────────────────────────────────────────
     "scenario-3": {
-        "phase": "③ 运行时验证",
+        "phase": "③ 运行时保证",
         "title": "变更验证——紧急 Hotfix",
         "subtitle": "部署前安全检查发现复合故障",
         "description": (
@@ -278,6 +293,9 @@ SCENARIOS = {
                     "低于 66% 的 AvailabilityFloor。"
                 ),
                 "agent_action": "rolling_update(service=inventory-svc, strategy=one-at-a-time)",
+                "sre_context": "大促前一天，发现 inventory-svc 库存扣减有并发 bug，需要紧急滚动更新。当前状态：4 副本（东2西2），已为大促扩容。风险：上游 order-svc 可能因 GC 停顿短暂降级。",
+                "key_question": "在最坏情况（滚动更新 + 上游 GC 停顿同时发生）下，链路吞吐量能否保持在 66% 安全阈值以上？",
+                "guarantee": "❌ 不能保证。复合故障场景下链路吞吐量降至 50%，低于 66% 安全线。单独的滚动更新是安全的，但叠加 GC 风险就不安全。",
             },
             2: {
                 "title": "调整方案：先扩容再更新",
@@ -288,6 +306,9 @@ SCENARIOS = {
                     "BMC 验证 3 步内所有可达状态均通过。"
                 ),
                 "agent_action": "scale_up(inventory-svc, to=6) && rolling_update(inventory-svc)",
+                "sre_context": "团队调整方案：先将 inventory-svc 扩容至 6 副本，再执行滚动更新。6 副本情况下，即使 1 个在更新 + 1 个上游 GC 停顿，仍有 4 个健康副本维持足够容量。",
+                "key_question": "扩容至 6 副本后，滚动更新在复合故障下能否维持 66% 安全阈值？",
+                "guarantee": "✅ 可以保证。6 副本下复合故障场景有效容量为 66.7%，高于 66% 阈值。",
             },
         },
         "violations": {
@@ -340,7 +361,7 @@ SCENARIOS = {
 
     # ── 场景 4 ──────────────────────────────────────────────────────────
     "scenario-4": {
-        "phase": "③ 运行时验证",
+        "phase": "③ 运行时保证",
         "title": "故障拦截——Failover 脑裂",
         "subtitle": "数据库故障转移中的脑裂预防",
         "description": (
@@ -383,6 +404,9 @@ SCENARIOS = {
                     "同时东区数据库正在恢复，可能接受部分写入，造成脑裂窗口。"
                 ),
                 "agent_action": "failover_plan: [SwitchTraffic(west), SwitchDBWrites(west)]",
+                "sre_context": '大促进行中，东区 MySQL 主库故障。Agent 计划执行故障切换：先切流量到西区，再提升西区 DB 为主库。这是标准的\u201c流量优先\u201d切换流程。',
+                "key_question": '\u201c流量优先\u201d切换顺序能否保证不出现脑裂（没有两个 AZ 同时接受写入的窗口）？',
+                "guarantee": "❌ 不能保证。存在一个 2 步窗口：流量已切到西区（西区 DB 接收写入），但东区 DB 仍是主库且仍在接受残留东区连接的写入。这产生了脑裂窗口。",
             },
             2: {
                 "title": "修正计划：先切写入",
@@ -394,6 +418,9 @@ SCENARIOS = {
                     "不存在脑裂窗口。"
                 ),
                 "agent_action": "failover_plan: [SwitchDBWrites(west), SwitchTraffic(west)]",
+                "sre_context": "团队调整顺序：先切 DB 写入到西区（提升西区 DB 为主库），再切流量。这样消除了脑裂窗口，因为写入在流量切换之前就已经统一。",
+                "key_question": '\u201c写入优先\u201d切换顺序能否保证不出现脑裂？',
+                "guarantee": "✅ 可以保证。先切写入后，不存在两个 DB 同时接受写入的时刻。流量切换只是重定向读请求，直到 DB 提升完成。",
             },
         },
         "violations": {
@@ -500,6 +527,9 @@ SCENARIOS = {
                     "根因：现有的 invariant 中没有缓存健康度相关的约束。"
                 ),
                 "agent_action": "bmc_reverse(terminal_state=full_chain_5xx, max_depth=5)",
+                "sre_context": "大促结束后复盘发现一次级联故障：user-svc 的 Redis 缓存发生驱逐风暴，缓存命中率从 99% 骤降至 12%。缓存穿透洪峰压垮数据库，沿服务链级联蔓延。",
+                "key_question": "从 Redis 内存压力到全链路级联故障，完整的状态转移路径是什么？",
+                "guarantee": "❌ 系统缺少缓存健康不变量。故障路径：Redis 内存压力 → 缓存驱逐 → 命中率降至 12% → 缓存穿透风暴 → DB 过载 → user-svc 超时 → order-svc 队列积压 → 全链路故障。",
             },
             2: {
                 "title": "生成新 Invariant",
@@ -511,6 +541,9 @@ SCENARIOS = {
                     "3 步故障路径在第 1 步（缓存命中率降至 12% < 50%）就会被捕获。"
                 ),
                 "agent_action": "propose_invariant(CacheHitRateFloor: cacheHitRate >= 50%)",
+                "sre_context": "基于故障路径分析，团队定义新的安全不变量：CacheHitRateFloor——缓存服务的命中率必须保持在 50% 以上。一旦突破，系统触发限流以在级联开始前阻断故障传播。",
+                "key_question": "新增 CacheHitRateFloor + 限流响应能否阻断已识别的级联故障路径？",
+                "guarantee": "✅ 可以保证。当缓存命中率降至 50% 以下时，限流在 DB 过载阈值之前激活，打断级联链条。",
             },
             3: {
                 "title": "反馈阶段① — 重新检查可实现性",
@@ -522,6 +555,9 @@ SCENARIOS = {
                     "闭环完成。"
                 ),
                 "agent_action": "realizability_check(specs=[relaxed_SLOs, CacheHitRateFloor, CacheBurstEviction])",
+                "sre_context": "将新的 CacheHitRateFloor 不变量回馈到阶段 ①。团队需要验证新增约束是否与现有 SLO 冲突——限流可能影响可用性。",
+                "key_question": "扩展后的规约集（原始 SLO + CacheHitRateFloor + 限流）是否仍然可同时满足？",
+                "guarantee": "✅ 可以保证。限流仅在命中率低于 50% 时激活（异常状态），正常运行下所有 SLO 仍可满足。闭环完成。",
             },
         },
         "violations": {

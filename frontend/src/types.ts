@@ -63,6 +63,10 @@ export interface ScenarioStep {
   pre_state: InfrastructureState | null;
   post_state: InfrastructureState | null;
   verification: VerificationReport | null;
+  // SRE-first narrative fields
+  sre_context?: string;
+  key_question?: string;
+  guarantee?: string;
 }
 
 export interface ConstraintDef {

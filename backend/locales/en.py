@@ -5,7 +5,7 @@ SCENARIOS = {
     "scenario-1": {
         "title": "SLO Conflict Detection",
         "subtitle": "Pre-event specification validation",
-        "phase": "① Realizability Check",
+        "phase": "① Define SLOs",
         "description": (
             "Before a major sales event, the SRE team defines three SLOs for the "
             "payment path: 99.99% availability, P99 latency under 200ms, and strong "
@@ -55,6 +55,22 @@ SCENARIOS = {
                     "forcing availability degradation below 99.99%."
                 ),
                 "agent_action": "define_slo(availability=99.99%, latency_p99<200ms, consistency=strong)",
+                "sre_context": (
+                    "Before the Double-11 sales event, the SRE team defines three SLOs "
+                    "for the payment critical path: 99.99% availability, P99 latency "
+                    "under 200ms, and strong consistency. The system runs on a dual-AZ "
+                    "deployment (east primary, west standby)."
+                ),
+                "key_question": (
+                    "Can all three SLOs be satisfied simultaneously under the current "
+                    "dual-AZ topology?"
+                ),
+                "guarantee": (
+                    "❌ Cannot guarantee. Under AZ failover, synchronous replication "
+                    "adds 150-300ms cross-AZ latency, making P99<200ms impossible while "
+                    "maintaining strong consistency and 99.99% availability. These three "
+                    "SLOs form an impossible triangle."
+                ),
             },
             2: {
                 "title": "Relax Specifications",
@@ -66,6 +82,20 @@ SCENARIOS = {
                     "the relaxed specification set is realizable."
                 ),
                 "agent_action": "relax_spec(critical_path=strong+500ms, query_path=eventual+200ms)",
+                "sre_context": (
+                    "The team adjusts: payment writes keep strong consistency with "
+                    "relaxed P99 to 500ms; non-critical query path uses eventual "
+                    "consistency with P99 under 200ms."
+                ),
+                "key_question": (
+                    "After relaxation, can the new specification set be satisfied "
+                    "simultaneously?"
+                ),
+                "guarantee": (
+                    "✅ Can guarantee. The relaxed specifications no longer conflict "
+                    "— strong consistency only applies to the payment write path "
+                    "where higher latency is acceptable."
+                ),
             },
         },
         "violations": {
@@ -127,7 +157,7 @@ SCENARIOS = {
     "scenario-2": {
         "title": "Elastic Strategy Synthesis",
         "subtitle": "Auto-generate correct scaling controller",
-        "phase": "\u2461 Reactive Synthesis",
+        "phase": "② Build Strategy",
         "description": (
             "Based on corrected specifications from Case 1, Reactive Synthesis "
             "automatically generates a traffic scheduling and elastic scaling "
@@ -179,6 +209,20 @@ SCENARIOS = {
                     "safety_specs=[AvailabilityFloor, MinimumRedundancy, "
                     "NoSimultaneousUpdatesOnChain])"
                 ),
+                "sre_context": (
+                    "Based on the validated SLOs from Case 1, the team needs an "
+                    "automated scaling strategy for the sales event. Traffic is expected "
+                    "to surge from 1x to 10x. Instead of manually writing runbooks, they "
+                    "input safety requirements and let the system generate a correct strategy."
+                ),
+                "key_question": (
+                    "Can a scaling strategy be automatically generated that guarantees "
+                    "all safety constraints under any traffic pattern from 1x to 10x?"
+                ),
+                "guarantee": (
+                    "✅ Can generate. The synthesis engine accepts the environment "
+                    "model and safety specs."
+                ),
             },
             2: {
                 "title": "Discover Mutual Exclusion Constraint",
@@ -191,6 +235,22 @@ SCENARIOS = {
                     "would temporarily reduce capacity further, violating the floor."
                 ),
                 "agent_action": "synthesis_result: guard(traffic > 8x \u2192 mutex(scale, rolling_update))",
+                "sre_context": (
+                    "During strategy generation, a critical constraint is discovered: "
+                    "when traffic exceeds 8x, scaling and rolling update operations "
+                    "become mutually exclusive. At 8x traffic, effective capacity during "
+                    "rolling update sits exactly at the availability floor \u2014 any "
+                    "concurrent scaling would breach it."
+                ),
+                "key_question": (
+                    "Are there hidden constraints between scaling and deployment "
+                    "operations under extreme traffic?"
+                ),
+                "guarantee": (
+                    "\u2705 Discovered: at traffic > 8x, scaling and rolling updates are "
+                    "mutually exclusive. This constraint was not in the original runbook "
+                    "and would likely cause an incident if missed."
+                ),
             },
             3: {
                 "title": "Generate Complete Controller",
@@ -202,6 +262,21 @@ SCENARIOS = {
                     "mutual exclusion guard. The controller is correct-by-construction."
                 ),
                 "agent_action": "output: StateMachine(states=4, transitions=12, guards=6)",
+                "sre_context": (
+                    "The complete scaling controller is generated as a state machine "
+                    "with 4 guards covering all traffic ranges. It includes the 8x "
+                    "mutex constraint, dependency-ordered scaling (inventory before "
+                    "order), and capacity pre-check before any rolling update."
+                ),
+                "key_question": (
+                    "Does the generated controller handle all possible traffic patterns "
+                    "while maintaining safety invariants?"
+                ),
+                "guarantee": (
+                    "\u2705 Guaranteed correct-by-construction. The controller covers 5 "
+                    "states, 8 transitions, and 4 guard conditions. Every reachable "
+                    "state satisfies all safety properties."
+                ),
             },
         },
         "violations": {},
@@ -246,7 +321,7 @@ SCENARIOS = {
     "scenario-3": {
         "title": "Change Verification \u2014 Emergency Hotfix",
         "subtitle": "Pre-deployment safety check catches compound failure",
-        "phase": "\u2462 Runtime Verification",
+        "phase": "③ Runtime Guarantee",
         "description": (
             "One day before the major sales event, a critical concurrency bug is "
             "discovered in inventory-svc stock deduction logic. The service has been "
@@ -290,6 +365,23 @@ SCENARIOS = {
                     "effective throughput drops to 50%, below the 66% AvailabilityFloor."
                 ),
                 "agent_action": "rolling_update(service=inventory-svc, strategy=one-at-a-time)",
+                "sre_context": (
+                    "One day before the sales event, a concurrency bug is found in "
+                    "inventory-svc stock deduction. The team needs an emergency rolling "
+                    "update. Current state: 4 replicas (2 east, 2 west), already "
+                    "pre-scaled for the event. Risk: upstream order-svc may experience "
+                    "GC pauses during peak."
+                ),
+                "key_question": (
+                    "Under worst case (rolling update + upstream GC pause occurring "
+                    "simultaneously), can chain throughput stay above the 66% safety "
+                    "threshold?"
+                ),
+                "guarantee": (
+                    "\u274c Cannot guarantee. Compound failure drops chain throughput to "
+                    "50%, below the 66% safety threshold. The rolling update alone is "
+                    "safe, but combined with the GC risk it is not."
+                ),
             },
             2: {
                 "title": "Adjusted Plan: Scale First, Then Update",
@@ -301,6 +393,20 @@ SCENARIOS = {
                     "states within 3 steps pass."
                 ),
                 "agent_action": "scale_up(inventory-svc, to=6) && rolling_update(inventory-svc)",
+                "sre_context": (
+                    "The team adjusts: scale inventory-svc to 6 replicas first, then "
+                    "perform the rolling update. With 6 replicas, even if 1 is updating "
+                    "and 1 upstream has a GC pause, 4 healthy replicas maintain "
+                    "sufficient capacity."
+                ),
+                "key_question": (
+                    "After scaling to 6 replicas, can the rolling update maintain the "
+                    "66% safety threshold even under compound failure?"
+                ),
+                "guarantee": (
+                    "\u2705 Can guarantee. With 6 replicas, compound failure scenario "
+                    "yields 66.7% effective capacity, above the 66% threshold."
+                ),
             },
         },
         "violations": {
@@ -352,7 +458,7 @@ SCENARIOS = {
     "scenario-4": {
         "title": "Fault Interception \u2014 Failover Split-Brain",
         "subtitle": "Preventing split-brain during database failover",
-        "phase": "\u2462 Runtime Verification",
+        "phase": "③ Runtime Guarantee",
         "description": (
             "During peak traffic on sales day, the east-region database primary "
             "experiences latency spikes (50% of requests timing out). The synthesized "
@@ -398,6 +504,22 @@ SCENARIOS = {
                     "creating a split-brain window."
                 ),
                 "agent_action": "failover_plan: [SwitchTraffic(west), SwitchDBWrites(west)]",
+                "sre_context": (
+                    "During the sales event, the east-AZ MySQL primary fails. The agent "
+                    "plans a failover: first switch traffic to west-AZ, then promote "
+                    "west DB to primary. This is the standard 'traffic-first' failover "
+                    "procedure."
+                ),
+                "key_question": (
+                    "Does the traffic-first failover sequence guarantee no split-brain "
+                    "(no window where both AZs accept writes simultaneously)?"
+                ),
+                "guarantee": (
+                    "\u274c Cannot guarantee. There is a 2-step window where traffic has "
+                    "been redirected to west (which sends writes to the west DB) while "
+                    "the east DB is still primary and accepting writes from any "
+                    "remaining east connections. This creates a split-brain window."
+                ),
             },
             2: {
                 "title": "Corrected Plan: Switch Writes First",
@@ -409,6 +531,20 @@ SCENARIOS = {
                     "align. No split-brain window exists."
                 ),
                 "agent_action": "failover_plan: [SwitchDBWrites(west), SwitchTraffic(west)]",
+                "sre_context": (
+                    "The team reverses the order: first switch DB writes to west "
+                    "(promote west DB to primary), then switch traffic. This eliminates "
+                    "the split-brain window because writes are consolidated before "
+                    "traffic shifts."
+                ),
+                "key_question": (
+                    "Does the writes-first failover sequence guarantee no split-brain?"
+                ),
+                "guarantee": (
+                    "\u2705 Can guarantee. By switching writes first, there is no moment "
+                    "where two DBs simultaneously accept writes. Traffic switch only "
+                    "redirects reads until the DB promotion completes."
+                ),
             },
         },
         "violations": {
@@ -462,7 +598,7 @@ SCENARIOS = {
     "scenario-5": {
         "title": "Fault Retrospective & Feedback Loop",
         "subtitle": "From incident analysis to specification evolution",
-        "phase": "\u2463 Post-Incident \u2192 \u2460",
+        "phase": "④ Post-Incident → ①",
         "description": (
             "After the sales event, a real cascading failure is analyzed: a "
             "promotional popup caused 10x query surge on user-svc, leading to Redis "
@@ -515,6 +651,22 @@ SCENARIOS = {
                     "monitors cache health."
                 ),
                 "agent_action": "bmc_reverse(terminal_state=full_chain_5xx, max_depth=5)",
+                "sre_context": (
+                    "After the sales event, a post-incident review reveals a cascade "
+                    "failure: user-svc experienced a Redis cache eviction storm, causing "
+                    "cache hit rate to drop from 99% to 12%. The resulting cache miss "
+                    "flood overwhelmed the database, cascading through the service chain."
+                ),
+                "key_question": (
+                    "What was the exact state transition path from the initial Redis "
+                    "memory pressure to the full cascade failure?"
+                ),
+                "guarantee": (
+                    "\u274c The system had no cache health invariant. The fault path: "
+                    "Redis memory pressure \u2192 cache eviction \u2192 hit rate drops to 12% "
+                    "\u2192 cache miss storm \u2192 DB overload \u2192 user-svc timeout \u2192 order-svc "
+                    "queue backlog \u2192 full chain failure."
+                ),
             },
             2: {
                 "title": "Generate New Invariant",
@@ -528,6 +680,21 @@ SCENARIOS = {
                     "have been caught at step 1 (cache hit rate drop to 12% < 50%)."
                 ),
                 "agent_action": "propose_invariant(CacheHitRateFloor: cacheHitRate >= 50%)",
+                "sre_context": (
+                    "Based on the fault path analysis, the team defines a new safety "
+                    "invariant: CacheHitRateFloor \u2014 cached services must maintain cache "
+                    "hit rate above 50%. When breached, the system triggers rate "
+                    "limiting before the cascade begins."
+                ),
+                "key_question": (
+                    "Does adding CacheHitRateFloor with rate-limiting response prevent "
+                    "the identified cascade path?"
+                ),
+                "guarantee": (
+                    "\u2705 Can guarantee. With the new invariant, when cache hit rate "
+                    "drops below 50%, rate limiting activates before the DB overload "
+                    "threshold is reached, breaking the cascade chain."
+                ),
             },
             3: {
                 "title": "Feed Back to Phase \u2460 \u2014 Re-check Realizability",
@@ -540,6 +707,22 @@ SCENARIOS = {
                     "scaling decisions. The feedback loop is complete."
                 ),
                 "agent_action": "realizability_check(specs=[relaxed_SLOs, CacheHitRateFloor, CacheBurstEviction])",
+                "sre_context": (
+                    "The new CacheHitRateFloor invariant is fed back into Phase \u2460. "
+                    "The team needs to verify that adding this constraint doesn't "
+                    "conflict with existing SLOs \u2014 adding rate limiting may impact "
+                    "availability."
+                ),
+                "key_question": (
+                    "Does the expanded specification set (original SLOs + "
+                    "CacheHitRateFloor + rate limiting) remain satisfiable?"
+                ),
+                "guarantee": (
+                    "\u2705 Can guarantee. Rate limiting only activates when cache hit "
+                    "rate drops below 50%, which is an abnormal condition. Under normal "
+                    "operation, all SLOs remain satisfiable. The feedback loop is "
+                    "complete."
+                ),
             },
         },
         "violations": {

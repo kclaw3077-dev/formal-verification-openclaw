@@ -113,6 +113,9 @@ def _scenario_1(L: dict) -> Scenario:
                 title=t["steps"][1]["title"],
                 description=t["steps"][1]["description"],
                 agent_action=t["steps"][1]["agent_action"],
+                sre_context=t["steps"][1].get("sre_context", ""),
+                key_question=t["steps"][1].get("key_question", ""),
+                guarantee=t["steps"][1].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="define_slo", params={
                         "availability": "99.99%",
@@ -156,6 +159,9 @@ def _scenario_1(L: dict) -> Scenario:
                 title=t["steps"][2]["title"],
                 description=t["steps"][2]["description"],
                 agent_action=t["steps"][2]["agent_action"],
+                sre_context=t["steps"][2].get("sre_context", ""),
+                key_question=t["steps"][2].get("key_question", ""),
+                guarantee=t["steps"][2].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="relax_spec", params={
                         "critical_path": "strong+500ms",
@@ -225,6 +231,9 @@ def _scenario_2(L: dict) -> Scenario:
                 title=t["steps"][1]["title"],
                 description=t["steps"][1]["description"],
                 agent_action=t["steps"][1]["agent_action"],
+                sre_context=t["steps"][1].get("sre_context", ""),
+                key_question=t["steps"][1].get("key_question", ""),
+                guarantee=t["steps"][1].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="synthesize", params={
                         "env_model": {"traffic": "1x-10x", "max_pods": 20},
@@ -253,6 +262,9 @@ def _scenario_2(L: dict) -> Scenario:
                 title=t["steps"][2]["title"],
                 description=t["steps"][2]["description"],
                 agent_action=t["steps"][2]["agent_action"],
+                sre_context=t["steps"][2].get("sre_context", ""),
+                key_question=t["steps"][2].get("key_question", ""),
+                guarantee=t["steps"][2].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="synthesis_guard", params={
                         "guard": "traffic > 8x → mutex(scale, rolling_update)",
@@ -283,6 +295,9 @@ def _scenario_2(L: dict) -> Scenario:
                 title=t["steps"][3]["title"],
                 description=t["steps"][3]["description"],
                 agent_action=t["steps"][3]["agent_action"],
+                sre_context=t["steps"][3].get("sre_context", ""),
+                key_question=t["steps"][3].get("key_question", ""),
+                guarantee=t["steps"][3].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="synthesis_output", params={
                         "states": 4, "transitions": 12, "guards": 6,
@@ -344,6 +359,9 @@ def _scenario_3(L: dict) -> Scenario:
                 title=t["steps"][1]["title"],
                 description=t["steps"][1]["description"],
                 agent_action=t["steps"][1]["agent_action"],
+                sre_context=t["steps"][1].get("sre_context", ""),
+                key_question=t["steps"][1].get("key_question", ""),
+                guarantee=t["steps"][1].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="rolling_update", params={"service": "inventory-svc", "strategy": "one-at-a-time"}),
                 ],
@@ -382,6 +400,9 @@ def _scenario_3(L: dict) -> Scenario:
                 title=t["steps"][2]["title"],
                 description=t["steps"][2]["description"],
                 agent_action=t["steps"][2]["agent_action"],
+                sre_context=t["steps"][2].get("sre_context", ""),
+                key_question=t["steps"][2].get("key_question", ""),
+                guarantee=t["steps"][2].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="scale_up", params={"service": "inventory-svc", "to": 6}),
                     AgentOperation(op_type="rolling_update", params={"service": "inventory-svc"}),
@@ -441,6 +462,9 @@ def _scenario_4(L: dict) -> Scenario:
                 title=t["steps"][1]["title"],
                 description=t["steps"][1]["description"],
                 agent_action=t["steps"][1]["agent_action"],
+                sre_context=t["steps"][1].get("sre_context", ""),
+                key_question=t["steps"][1].get("key_question", ""),
+                guarantee=t["steps"][1].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="switch_traffic", params={"target_region": "west"}),
                     AgentOperation(op_type="switch_db_writes", params={"target_region": "west"}),
@@ -480,6 +504,9 @@ def _scenario_4(L: dict) -> Scenario:
                 title=t["steps"][2]["title"],
                 description=t["steps"][2]["description"],
                 agent_action=t["steps"][2]["agent_action"],
+                sre_context=t["steps"][2].get("sre_context", ""),
+                key_question=t["steps"][2].get("key_question", ""),
+                guarantee=t["steps"][2].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="switch_db_writes", params={"target_region": "west"}),
                     AgentOperation(op_type="switch_traffic", params={"target_region": "west"}),
@@ -543,6 +570,9 @@ def _scenario_5(L: dict) -> Scenario:
                 title=t["steps"][1]["title"],
                 description=t["steps"][1]["description"],
                 agent_action=t["steps"][1]["agent_action"],
+                sre_context=t["steps"][1].get("sre_context", ""),
+                key_question=t["steps"][1].get("key_question", ""),
+                guarantee=t["steps"][1].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="bmc_reverse", params={"terminal_state": "full_chain_5xx", "max_depth": 5}),
                 ],
@@ -583,6 +613,9 @@ def _scenario_5(L: dict) -> Scenario:
                 title=t["steps"][2]["title"],
                 description=t["steps"][2]["description"],
                 agent_action=t["steps"][2]["agent_action"],
+                sre_context=t["steps"][2].get("sre_context", ""),
+                key_question=t["steps"][2].get("key_question", ""),
+                guarantee=t["steps"][2].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="propose_invariant", params={"name": "CacheHitRateFloor", "threshold": "50%"}),
                 ],
@@ -605,6 +638,9 @@ def _scenario_5(L: dict) -> Scenario:
                 title=t["steps"][3]["title"],
                 description=t["steps"][3]["description"],
                 agent_action=t["steps"][3]["agent_action"],
+                sre_context=t["steps"][3].get("sre_context", ""),
+                key_question=t["steps"][3].get("key_question", ""),
+                guarantee=t["steps"][3].get("guarantee", ""),
                 operations=[
                     AgentOperation(op_type="realizability_check", params={
                         "specs": ["relaxed_SLOs", "CacheHitRateFloor", "CacheBurstEviction"],

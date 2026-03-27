@@ -8,18 +8,18 @@
 
 ## Overview
 
-This is an interactive demo that shows how **formal verification (TLA+ model checking)** can be integrated into an **LLM-based SRE Agent** (built on [OpenClaw](https://github.com/openclaw/openclaw)) to catch subtle infrastructure issues **before** they reach production.
+This is an interactive demo showing how **formal verification** acts as an invisible guarantee engine inside an **LLM-based SRE Agent** (built on [OpenClaw](https://github.com/openclaw/openclaw)).
 
-The core idea: **Agent proposes an operation → TLA+ exhaustively verifies all reachable states → only safe operations are executed**.
+From an SRE's perspective, the agent answers one question per operation: **"Can we guarantee this is safe?"** — backed by exhaustive state-space exploration rather than human judgment or testing. The formal methods are hidden; what's exposed is the guarantee and, when it fails, the exact fault path.
 
-### Why Formal Verification for SRE?
+### Why Formal Guarantees for SRE?
 
 Traditional SRE relies on runbooks, monitoring alerts, and human judgment. But:
 - Humans can't enumerate all possible state combinations (combinatorial explosion)
 - Two individually safe operations can be dangerous when combined
 - Race conditions in multi-step plans are nearly invisible to informal reasoning
 
-TLA+ model checking **exhaustively explores every reachable state**, including failure scenarios, concurrent interleavings, and cascading effects — finding bugs that testing and code review miss.
+TLA+ model checking **exhaustively explores every reachable state**, including failure scenarios, concurrent interleavings, and cascading effects — catching compound failures that testing and code review miss.
 
 ### Architecture
 
@@ -98,38 +98,37 @@ flowchart LR
 
 ### Five Lifecycle Scenarios
 
-| # | Scenario | Lifecycle Phase | What Formal Methods Catch |
-|---|---------|----------------|--------------------------|
-| 1 | SLO Conflict Detection | ① Realizability Check | Three SLOs form an impossible triangle under dual-AZ deployment |
-| 2 | Elastic Strategy Synthesis | ② Reactive Synthesis | Synthesizer discovers scaling/update mutual exclusion at 8x traffic |
-| 3 | Change Verification — Emergency Hotfix | ③ Runtime BMC | Rolling update + upstream GC pause compound failure |
-| 4 | Fault Interception — Failover Split-Brain | ③ Runtime BMC | Wrong failover ordering creates 30-second split-brain window |
-| 5 | Fault Retrospective & Feedback Loop | ④→① Feedback | 3-step cache cascade path; new invariant prevents recurrence |
+| # | Scenario | Subtitle | Phase | SRE Guarantee Question |
+|---|---------|---------|-------|----------------------|
+| 1 | SLO Conflict Detection | Pre-event specification validation | ① Define SLOs | Can 99.99% availability, P99 < 200ms, and strong consistency all be met under dual-AZ? |
+| 2 | Elastic Strategy Synthesis | Auto-generate correct scaling controller | ② Build Strategy | Can the agent auto-generate a scaling strategy that never violates safety at 10x traffic? |
+| 3 | Change Verification — Emergency Hotfix | Pre-deployment safety check catches compound failure | ③ Runtime Guarantee | During rolling update + upstream GC pause, can throughput stay above 66%? |
+| 4 | Fault Interception — Failover Split-Brain | Preventing split-brain during database failover | ③ Runtime Guarantee | Does the proposed failover order guarantee no split-brain window? |
+| 5 | Fault Retrospective & Feedback Loop | From incident analysis to specification evolution | ④ Post-Incident → ① | How did a 3-step cache cascade reach full outage? What invariant prevents recurrence? |
 
 ### Features
 
-- Interactive scenario walkthrough with step-by-step verification
-- Service topology visualization (D3.js force-directed graph)
-- TLA+ specification viewer with structured spec references
-- Counterexample trace viewer showing exactly how invariants break
-- Verification constraints panel showing thresholds upfront
+- **SRE-first narrative** — each step answers a business question with a clear guarantee (✓/✗) before exposing any formal methods detail
+- **3-layer layout**: SRE context + live topology → key question → guarantee result
+- All formal details (fault path trace, TLA+ spec, verification meta) collapsed behind "View detailed analysis"
+- Service topology visualization (D3.js force-directed graph) embedded alongside scenario context
 - Full **Chinese/English** bilingual support
 
 ---
 
 ## 概述
 
-这是一个交互式 Demo，展示如何将**形式化验证（TLA+ 模型检查）**集成到基于 [OpenClaw](https://github.com/openclaw/openclaw) 的 **LLM SRE Agent** 中，在运维操作**上线前**捕获难以察觉的基础设施隐患。
+这是一个交互式 Demo，展示**形式化验证**如何作为透明的"保证引擎"嵌入到基于 [OpenClaw](https://github.com/openclaw/openclaw) 的 **LLM SRE Agent** 中。
 
-核心理念：**Agent 提出操作 → TLA+ 穷举验证所有可达状态 → 只有安全的操作才会被执行**。
+从 SRE 的视角，Agent 对每个操作只回答一个问题：**"这个操作能不能保证安全？"** — 答案来自穷举状态空间探索，而非人工判断或测试。形式化方法对 SRE 透明；暴露出的是保证结论，以及当结论为否时的精确故障路径。
 
-### 为什么 SRE 需要形式化验证？
+### 为什么 SRE 需要形式化保证？
 
 - 人工无法枚举所有可能的状态组合（组合爆炸）
 - 两个各自安全的操作组合后可能产生危险
 - 多步计划中的竞态条件对人工推理几乎不可见
 
-TLA+ 模型检查**穷举探索每一个可达状态**，包括故障场景、并发交错和级联效应。
+TLA+ 模型检查**穷举探索每一个可达状态**，包括故障场景、并发交错和级联效应，捕获测试和代码审查都会遗漏的复合故障。
 
 ### 形式化方法在 SRE 生命周期中的应用
 
@@ -194,13 +193,13 @@ flowchart LR
 
 ### 五个生命周期场景
 
-| # | 场景 | 生命周期阶段 | 形式化方法发现了什么 |
-|---|------|------------|---------------------|
-| 1 | 规约冲突检测 | ① 可实现性检查 | 三条 SLO 在双 AZ 下构成不可能三角 |
-| 2 | 弹性策略合成 | ② 反应式合成 | 合成器发现 8 倍流量下扩缩容与更新的互斥约束 |
-| 3 | 变更验证——紧急 Hotfix | ③ 运行时 BMC | 滚动更新 + 上游 GC 停顿的复合故障 |
-| 4 | 故障拦截——Failover 脑裂 | ③ 运行时 BMC | 错误的故障转移顺序产生 30 秒脑裂窗口 |
-| 5 | 故障回溯与闭环 | ④→① 反馈闭环 | 缓存击穿 3 步到全站故障；新 invariant 防止复发 |
+| # | 场景 | 副标题 | 阶段 | SRE 保证问题 |
+|---|------|--------|------|-------------|
+| 1 | SLO 冲突检测 | 大促前规约自洽验证 | ① 定义 SLO | 99.99% 可用性 + P99 < 200ms + 强一致，在双 AZ 下能同时满足吗？ |
+| 2 | 弹性策略合成 | 自动生成正确的弹性伸缩控制器 | ② 生成执行策略 | Agent 能否自动生成一套在 10 倍流量下永不违反安全约束的伸缩策略？ |
+| 3 | 变更验证——紧急 Hotfix | 上线前安全检查捕获复合故障 | ③ 运行时保证 | 滚动更新 + 上游 GC 停顿同时发生时，吞吐量能否保持在 66% 以上？ |
+| 4 | 故障拦截——Failover 脑裂 | 防止数据库故障转移时产生脑裂 | ③ 运行时保证 | 当前的 Failover 操作顺序能否保证不出现脑裂窗口？ |
+| 5 | 故障回溯与闭环 | 从事故分析到规约迭代 | ④ 事后复盘 → ① | 缓存击穿如何 3 步走到全站故障？什么 invariant 能防止复发？ |
 
 ---
 

@@ -1,7 +1,7 @@
 const en = {
   // Header
-  "header.title": "Formal Verification Gate",
-  "header.subtitle": "OpenClaw SRE Agent + TLA+ Model Checking",
+  "header.title": "SRE Verification Gate",
+  "header.subtitle": "OpenClaw SRE Agent — Formal Guarantee Engine",
   "header.badge.demo": "Demo",
   "header.badge.tla": "TLA+",
 
@@ -11,14 +11,14 @@ const en = {
   // Empty state
   "empty.title": "Select a Scenario",
   "empty.description":
-    "Choose a scenario from the left to explore how TLA+ formal verification catches subtle issues in SRE operations before they reach production.",
+    "Choose a scenario from the left to explore how automated safety guarantees protect SRE operations before they reach production.",
   "loading": "Loading scenario...",
 
   // Panel titles
   "panel.topology": "Service Topology",
-  "panel.verification": "Verification Result",
-  "panel.trace": "Counterexample Trace",
-  "panel.tlaSpec": "TLA+ Specification",
+  "panel.verification": "Guarantee Details",
+  "panel.trace": "Fault Path",
+  "panel.tlaSpec": "Formal Specification",
 
   // Scenario player
   "step.label": "Step",
@@ -27,19 +27,30 @@ const en = {
   "step.propertiesChecked": "Properties checked:",
   "step.spec": "Spec:",
 
+  // SRE narrative labels
+  "sre.context": "Scenario",
+  "sre.keyQuestion": "Key Question",
+  "sre.guarantee": "Guarantee",
+  "sre.detailToggle": "View detailed analysis",
+  "sre.detailToggleClose": "Collapse details",
+  "sre.fmBadge.realizability": "Realizability",
+  "sre.fmBadge.synthesis": "Synthesis",
+  "sre.fmBadge.bmc": "BMC",
+  "sre.fmBadge.bmc_reverse": "BMC Reverse",
+
   // Verification
-  "verification.safe": "SAFE",
-  "verification.unsafe": "UNSAFE",
-  "verification.realizable": "REALIZABLE",
-  "verification.unrealizable": "UNREALIZABLE",
-  "verification.safe.desc": "All invariants satisfied across all reachable states",
-  "verification.unsafe.desc": "{count} property violation(s) found",
+  "verification.safe": "Can Guarantee",
+  "verification.unsafe": "Cannot Guarantee",
+  "verification.realizable": "Satisfiable",
+  "verification.unrealizable": "Not Satisfiable",
+  "verification.safe.desc": "All safety properties hold under all reachable states",
+  "verification.unsafe.desc": "{count} safety issue(s) found",
   "verification.realizable.desc": "All specifications can be simultaneously satisfied",
   "verification.unrealizable.desc": "Specifications contain inherent conflicts — {count} constraint(s) in conflict",
   "verification.propertiesChecked": "Properties Checked",
-  "verification.violations": "Violations",
+  "verification.violations": "Issue Details",
   "verification.conflictProof": "Conflicting Constraints",
-  "verification.synthesizedController": "Synthesized Controller",
+  "verification.synthesizedController": "Generated Controller",
 
   // Trace
   "trace.empty": "No counterexample — all states safe.",
@@ -56,47 +67,47 @@ const en = {
   "constraints.title": "Verification Constraints",
 
   // Overview page — architecture pipeline
-  "overview.title": "Formal Methods across the SRE Lifecycle",
+  "overview.title": "Safety Guarantees across the SRE Lifecycle",
   "overview.subtitle":
-    "Four phases form a closed loop: define specs → synthesize controllers → verify at runtime → learn from incidents",
+    "Four phases form a closed loop: define SLOs → generate strategy → verify operations → learn from incidents",
 
-  "overview.pipeline.step1.title": "① Define Spec — Realizability Check",
-  "overview.pipeline.step1.desc": "Verify that SLO specifications can be simultaneously satisfied before any implementation",
+  "overview.pipeline.step1.title": "① Define SLOs — Can they be satisfied?",
+  "overview.pipeline.step1.desc": "Before implementation, verify that your SLO targets don't conflict under the current deployment topology",
   "overview.pipeline.step1.example": "",
 
-  "overview.pipeline.step2.title": "② Build Controller — Reactive Synthesis",
-  "overview.pipeline.step2.desc": "Auto-generate a correct-by-construction execution strategy from safety specifications",
+  "overview.pipeline.step2.title": "② Build Strategy — Is automation reliable?",
+  "overview.pipeline.step2.desc": "Auto-generate a correct execution strategy from safety requirements, discovering hidden constraints",
   "overview.pipeline.step2.example": "",
 
-  "overview.pipeline.step3.title": "③ Runtime Ops — Bounded Model Checking",
-  "overview.pipeline.step3.desc": "Verify each operation is safe within k steps before execution, catching compound failures",
+  "overview.pipeline.step3.title": "③ Changes & Incidents — Is this operation safe?",
+  "overview.pipeline.step3.desc": "Before executing, verify each operation maintains safety under worst-case compound failures",
   "overview.pipeline.step3.example": "",
 
-  "overview.pipeline.step4.title": "④ Post-Incident — BMC Reverse + Feedback",
-  "overview.pipeline.step4.desc": "Trace fault paths backward, discover new invariants, feed back to Phase ① for re-synthesis",
+  "overview.pipeline.step4.title": "④ Post-Incident — How to prevent recurrence?",
+  "overview.pipeline.step4.desc": "Trace fault paths, discover missing safety invariants, feed back to ① to strengthen the system",
   "overview.pipeline.step4.example": "",
 
   "overview.pipeline.arrow.output": "Output:",
 
   // Overview page — lifecycle phases
-  "overview.phases.title": "Four Lifecycle Phases",
+  "overview.phases.title": "Explore Scenarios",
 
-  "overview.phase.realizability.title": "Phase ① Realizability Check",
-  "overview.phase.realizability.description": "Verify specification consistency before building",
+  "overview.phase.realizability.title": "① Define SLOs",
+  "overview.phase.realizability.description": "Can your SLO targets be met simultaneously?",
   "overview.phase.realizability.scenario.scenario-1": "SLO Conflict Detection",
 
-  "overview.phase.synthesis.title": "Phase ② Reactive Synthesis",
-  "overview.phase.synthesis.description": "Auto-generate correct controllers from specifications",
-  "overview.phase.synthesis.scenario.scenario-2": "Elastic Strategy Synthesis",
+  "overview.phase.synthesis.title": "② Build Strategy",
+  "overview.phase.synthesis.description": "Auto-generate a reliable execution strategy",
+  "overview.phase.synthesis.scenario.scenario-2": "Elastic Scaling Strategy",
 
-  "overview.phase.bmc.title": "Phase ③ Runtime Verification",
-  "overview.phase.bmc.description": "Verify changes and fault responses in real-time",
+  "overview.phase.bmc.title": "③ Runtime Guarantee",
+  "overview.phase.bmc.description": "Is this change / failover safe to execute?",
   "overview.phase.bmc.scenario.scenario-3": "Emergency Hotfix",
   "overview.phase.bmc.scenario.scenario-4": "Failover Split-Brain",
 
-  "overview.phase.feedback.title": "Phase ④ → ① Feedback Loop",
-  "overview.phase.feedback.description": "Post-incident analysis feeds back new specifications",
-  "overview.phase.feedback.scenario.scenario-5": "Retrospective & Feedback",
+  "overview.phase.feedback.title": "④ Post-Incident",
+  "overview.phase.feedback.description": "Learn from incidents and prevent recurrence",
+  "overview.phase.feedback.scenario.scenario-5": "Fault Retrospective",
 
   // Back to overview
   "nav.backToOverview": "Overview",

@@ -2,12 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchScenario, fetchScenarios } from "./api";
 import type { Scenario, ScenarioSummary } from "./types";
 import { LangProvider, useLang } from "./i18n/context";
-import { TopologyGraph } from "./components/TopologyGraph";
 import { ScenarioPlayer } from "./components/ScenarioPlayer";
-import { VerificationPanel } from "./components/VerificationPanel";
-import { TlaSpecViewer } from "./components/TlaSpecViewer";
-import { TraceViewer } from "./components/TraceViewer";
-import { ConstraintsPanel } from "./components/ConstraintsPanel";
 import { OverviewPage } from "./components/OverviewPage";
 import "./styles.css";
 
@@ -19,12 +14,10 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Reload scenario list when language changes
   useEffect(() => {
     fetchScenarios(lang).then(setScenarios);
   }, [lang]);
 
-  // Reload current scenario when language changes
   useEffect(() => {
     if (selectedId) {
       setLoading(true);
@@ -101,61 +94,17 @@ function AppContent() {
               </button>
               <div className="scenario-header">
                 <h2>{current.title}</h2>
-                <p>{current.description}</p>
+                <p className="scenario-subtitle-text">{current.subtitle}</p>
               </div>
-
-              {current.constraints.length > 0 && (
-                <ConstraintsPanel constraints={current.constraints} />
-              )}
 
               <ScenarioPlayer
                 steps={current.steps}
                 activeStep={activeStep}
                 onStepChange={setActiveStep}
+                scenarioPhase={current.phase}
+                infraState={infraState}
+                scenario={current}
               />
-
-              <div className="two-col">
-                <div className="col">
-                  <div className="panel">
-                    <h3 className="panel-title">{t("panel.topology")}</h3>
-                    {infraState && <TopologyGraph state={infraState} />}
-                  </div>
-                </div>
-                <div className="col">
-                  <div className="panel">
-                    <h3 className="panel-title">{t("panel.verification")}</h3>
-                    {step?.verification && (
-                      <VerificationPanel report={step.verification} />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="two-col">
-                <div className="col">
-                  <div className="panel">
-                    <h3 className="panel-title">{t("panel.trace")}</h3>
-                    {step?.verification && (
-                      <TraceViewer
-                        trace={
-                          step.verification.counterexample_trace.length > 0
-                            ? step.verification.counterexample_trace
-                            : step.verification.violations[0]?.trace ?? []
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-                <div className="col">
-                  <div className="panel">
-                    <h3 className="panel-title">{t("panel.tlaSpec")}</h3>
-                    <TlaSpecViewer
-                      spec={current.tla_spec}
-                      specRefs={step?.verification?.tla_spec_refs ?? []}
-                    />
-                  </div>
-                </div>
-              </div>
             </>
           )}
         </main>

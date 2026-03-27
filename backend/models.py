@@ -99,6 +99,10 @@ class ScenarioStep(BaseModel):
     pre_state: InfrastructureState | None = None
     post_state: InfrastructureState | None = None
     verification: VerificationReport | None = None
+    # SRE-first narrative fields
+    sre_context: str = ""     # SRE scenario description in business language
+    key_question: str = ""    # The guarantee question this step answers
+    guarantee: str = ""       # The guarantee result summary
 
 
 class Scenario(BaseModel):

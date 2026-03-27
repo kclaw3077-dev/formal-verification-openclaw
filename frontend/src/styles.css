@@ -262,6 +262,11 @@ body {
   line-height: 1.7;
 }
 
+.scenario-subtitle-text {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1109,3 +1114,162 @@ body {
 /* Metrics label on topology nodes */
 .metrics-label { font-size: 9px; fill: #666; }
 .metrics-label.metrics-warning { fill: #c62828; font-weight: bold; }
+
+/* ==========================================================================
+   SRE Narrative Cards
+   ========================================================================== */
+
+.sre-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.sre-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sre-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.sre-card-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+/* Context card */
+.sre-context-card {
+  background: var(--bg-secondary);
+}
+
+/* Key question card */
+.sre-question-card {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: var(--accent);
+}
+
+.sre-question-text {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 15px;
+}
+
+/* FM badge */
+.fm-badge {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* Guarantee card */
+.sre-guarantee-card {
+  background: var(--bg-secondary);
+}
+
+.sre-guarantee-card.guarantee-positive {
+  border-color: var(--safe);
+  border-left: 3px solid var(--safe);
+}
+
+.sre-guarantee-card.guarantee-negative {
+  border-color: var(--unsafe);
+  border-left: 3px solid var(--unsafe);
+}
+
+.guarantee-positive .sre-card-body {
+  color: var(--safe);
+}
+
+.guarantee-negative .sre-card-body {
+  color: var(--unsafe);
+}
+
+/* Detail toggle */
+.detail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px 0;
+  font-family: var(--font-sans);
+  transition: color 0.15s;
+}
+
+.detail-toggle:hover {
+  color: var(--accent);
+}
+
+.toggle-arrow {
+  transition: transform 0.2s;
+  font-size: 10px;
+}
+
+.toggle-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Context + Topology side by side */
+.sre-context-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sre-context-row .sre-context-card {
+  margin-bottom: 0;
+}
+
+.sre-topology {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  min-height: 200px;
+}
+
+.sre-topology .topology-svg {
+  height: 200px;
+}
+
+/* Detail section (collapsed by default) */
+.detail-section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 4px;
+}
+
+.detail-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.detail-panel-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
