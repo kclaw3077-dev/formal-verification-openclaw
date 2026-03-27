@@ -17,6 +17,8 @@ class VerificationResult(str, Enum):
     SAFE = "SAFE"
     UNSAFE = "UNSAFE"
     UNKNOWN = "UNKNOWN"
+    REALIZABLE = "REALIZABLE"
+    UNREALIZABLE = "UNREALIZABLE"
 
 
 class Region(str, Enum):
@@ -30,6 +32,7 @@ class ServiceInfo(BaseModel):
     state: dict[str, ServiceState]  # region -> state
     dependencies: list[str]
     is_critical: bool = False
+    metrics: dict[str, float] | None = None  # e.g. {"cache_hit_rate": 0.99}
 
 
 class InfrastructureState(BaseModel):
@@ -76,6 +79,8 @@ class VerificationReport(BaseModel):
     tla_spec_used: str
     tla_spec_refs: list[TlaSpecRef] = []
     counterexample_trace: list[TraceStep] = []
+    synthesized_controller: dict | None = None  # Case 2: state machine output
+    conflict_proof: list[str] | None = None  # Case 1: conflicting constraint names
 
 
 class ConstraintDef(BaseModel):
@@ -101,6 +106,7 @@ class Scenario(BaseModel):
     title: str
     subtitle: str
     description: str
+    phase: str = ""  # lifecycle phase: realizability, synthesis, bmc-change, bmc-fault, feedback-loop
     constraints: list[ConstraintDef] = []
     initial_state: InfrastructureState
     steps: list[ScenarioStep]

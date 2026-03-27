@@ -1,26 +1,17 @@
 import { useLang } from "../i18n/context";
 
 const PIPELINE_STEPS = [
-  { key: "step1", color: "#94a3b8" },
-  { key: "step2", color: "#818cf8" },
-  { key: "step3", color: "#f59e0b" },
-  { key: "step4", color: "#6366f1" },
-  { key: "step5", color: "#10b981" },
+  { key: "step1", color: "#2e7d32" },
+  { key: "step2", color: "#1565c0" },
+  { key: "step3", color: "#e65100" },
+  { key: "step4", color: "#c62828" },
 ];
 
-const MODES = [
-  {
-    key: "single",
-    scenarios: ["scenario-1", "scenario-2", "scenario-5"],
-  },
-  {
-    key: "plan",
-    scenarios: ["scenario-3"],
-  },
-  {
-    key: "concurrent",
-    scenarios: ["scenario-4"],
-  },
+const PHASES = [
+  { key: "realizability", scenarios: ["scenario-1"] },
+  { key: "synthesis", scenarios: ["scenario-2"] },
+  { key: "bmc", scenarios: ["scenario-3", "scenario-4"] },
+  { key: "feedback", scenarios: ["scenario-5"] },
 ];
 
 interface Props {
@@ -41,12 +32,11 @@ export function OverviewPage({ onSelectScenario }: Props) {
       {/* Architecture Pipeline */}
       <div className="pipeline">
         {PIPELINE_STEPS.map((step, i) => {
-          const isHighlight = step.key === "step4";
           const example = t(`overview.pipeline.${step.key}.example`);
           return (
             <div key={step.key} className="pipeline-row">
               {/* Step node */}
-              <div className={`pipeline-step ${isHighlight ? "pipeline-highlight" : ""}`}>
+              <div className="pipeline-step">
                 <div className="pipeline-num" style={{ background: step.color }}>
                   {i + 1}
                 </div>
@@ -76,22 +66,22 @@ export function OverviewPage({ onSelectScenario }: Props) {
         })}
       </div>
 
-      {/* Verification Modes */}
+      {/* Lifecycle Phases */}
       <div className="overview-modes-section">
-        <h3 className="overview-modes-title">{t("overview.modes.title")}</h3>
+        <h3 className="overview-modes-title">{t("overview.phases.title")}</h3>
         <div className="overview-modes">
-          {MODES.map((mode) => (
-            <div key={mode.key} className="mode-card">
-              <h4>{t(`overview.mode.${mode.key}.title`)}</h4>
-              <p>{t(`overview.mode.${mode.key}.description`)}</p>
+          {PHASES.map((phase) => (
+            <div key={phase.key} className="mode-card">
+              <h4>{t(`overview.phase.${phase.key}.title`)}</h4>
+              <p>{t(`overview.phase.${phase.key}.description`)}</p>
               <div className="mode-scenarios">
-                {mode.scenarios.map((sid) => (
+                {phase.scenarios.map((sid) => (
                   <button
                     key={sid}
                     className="scenario-chip"
                     onClick={() => onSelectScenario(sid)}
                   >
-                    {t(`overview.mode.${mode.key}.scenario.${sid}`)}
+                    {t(`overview.phase.${phase.key}.scenario.${sid}`)}
                   </button>
                 ))}
               </div>

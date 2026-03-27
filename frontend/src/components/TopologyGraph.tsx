@@ -19,6 +19,7 @@ interface Node extends d3.SimulationNodeDatum {
   replicas: string;
   isCritical: boolean;
   stateLabel: string;
+  cacheHitRate?: number;
 }
 
 interface Link extends d3.SimulationLinkDatum<Node> {
@@ -42,6 +43,8 @@ export function TopologyGraph({ state }: { state: InfrastructureState }) {
         .map(([r, n]) => `${r}:${n}`)
         .join(" ");
       const rawState = (svc.state[region] ?? "running") as ServiceState;
+      const metrics = (svc as any).metrics;
+      const cacheHitRate = metrics?.cache_hit_rate != null ? metrics.cache_hit_rate : undefined;
       return {
         id: svc.name,
         label: svc.name,
@@ -49,6 +52,7 @@ export function TopologyGraph({ state }: { state: InfrastructureState }) {
         replicas: replicaStr,
         isCritical: svc.is_critical,
         stateLabel: t(`state.${rawState}`),
+        cacheHitRate,
       };
     });
 
@@ -181,6 +185,18 @@ export function TopologyGraph({ state }: { state: InfrastructureState }) {
       .attr("fill", (d) => STATE_COLORS[d.state])
       .attr("font-size", "9px")
       .attr("font-weight", "500");
+
+    // Cache hit rate label for nodes with metrics
+    nodeGroup
+      .filter((d) => d.cacheHitRate != null)
+      .append("text")
+      .text((d) => `cache: ${Math.round((d.cacheHitRate ?? 0) * 100)}%`)
+      .attr("text-anchor", "middle")
+      .attr("dy", 50)
+      .attr("class", (d) =>
+        `metrics-label${(d.cacheHitRate ?? 0) < 0.5 ? " metrics-warning" : ""}`
+      )
+      .attr("fill", (d) => (d.cacheHitRate ?? 0) >= 0.5 ? "#10b981" : "#c62828");
 
     simulation.on("tick", () => {
       linkGroup

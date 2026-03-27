@@ -30,13 +30,19 @@ const en = {
   // Verification
   "verification.safe": "SAFE",
   "verification.unsafe": "UNSAFE",
+  "verification.realizable": "REALIZABLE",
+  "verification.unrealizable": "UNREALIZABLE",
   "verification.safe.desc": "All invariants satisfied across all reachable states",
   "verification.unsafe.desc": "{count} property violation(s) found",
+  "verification.realizable.desc": "All specifications can be simultaneously satisfied",
+  "verification.unrealizable.desc": "Specifications contain inherent conflicts — {count} constraint(s) in conflict",
   "verification.propertiesChecked": "Properties Checked",
   "verification.violations": "Violations",
+  "verification.conflictProof": "Conflicting Constraints",
+  "verification.synthesizedController": "Synthesized Controller",
 
   // Trace
-  "trace.empty": "No counterexample \u2014 all states safe.",
+  "trace.empty": "No counterexample — all states safe.",
   "trace.violates": "Violates:",
 
   // Service states
@@ -44,53 +50,53 @@ const en = {
   "state.deploying": "deploying",
   "state.degraded": "degraded",
   "state.down": "down",
+  "state.cache_miss": "cache miss",
 
   // Constraints panel
   "constraints.title": "Verification Constraints",
 
   // Overview page — architecture pipeline
-  "overview.title": "Agent Architecture with Formal Verification",
+  "overview.title": "Formal Methods across the SRE Lifecycle",
   "overview.subtitle":
-    "Where does formal verification sit in the SRE Agent pipeline? What goes in, and what comes out?",
+    "Four phases form a closed loop: define specs → synthesize controllers → verify at runtime → learn from incidents",
 
-  "overview.pipeline.step1.title": "Natural Language Intent",
-  "overview.pipeline.step1.desc": "User describes the operation in natural language",
-  "overview.pipeline.step1.example": "\"Scale down inventory-svc to save costs at low traffic\"",
+  "overview.pipeline.step1.title": "① Define Spec — Realizability Check",
+  "overview.pipeline.step1.desc": "Verify that SLO specifications can be simultaneously satisfied before any implementation",
+  "overview.pipeline.step1.example": "",
 
-  "overview.pipeline.step2.title": "Agent LLM Reasoning",
-  "overview.pipeline.step2.desc": "OpenClaw Agent parses intent, queries infra state, generates an execution plan",
-  "overview.pipeline.step2.example": "Reads monitoring data, evaluates cost/risk, selects operation",
+  "overview.pipeline.step2.title": "② Build Controller — Reactive Synthesis",
+  "overview.pipeline.step2.desc": "Auto-generate a correct-by-construction execution strategy from safety specifications",
+  "overview.pipeline.step2.example": "",
 
-  "overview.pipeline.step3.title": "Structured Operation Plan",
-  "overview.pipeline.step3.desc": "Agent outputs typed operation descriptors \u2014 NOT natural language",
-  "overview.pipeline.step3.example": "AgentOperation(op_type=\"scale_down\", params={service, region, amount})\n+ Current InfrastructureState snapshot",
+  "overview.pipeline.step3.title": "③ Runtime Ops — Bounded Model Checking",
+  "overview.pipeline.step3.desc": "Verify each operation is safe within k steps before execution, catching compound failures",
+  "overview.pipeline.step3.example": "",
 
-  "overview.pipeline.step4.title": "Formal Verification Gate (TLA+)",
-  "overview.pipeline.step4.desc": "Maps operations + state into a TLA+ model, TLC model checker exhaustively explores all reachable states",
-  "overview.pipeline.step4.example": "Input: TLA+ model parameters\nOutput: SAFE / UNSAFE + counterexample trace",
-
-  "overview.pipeline.step5.title": "Execute or Reject",
-  "overview.pipeline.step5.desc": "SAFE \u2192 execute the operation; UNSAFE \u2192 block and show the counterexample to the operator",
-  "overview.pipeline.step5.example": "",
+  "overview.pipeline.step4.title": "④ Post-Incident — BMC Reverse + Feedback",
+  "overview.pipeline.step4.desc": "Trace fault paths backward, discover new invariants, feed back to Phase ① for re-synthesis",
+  "overview.pipeline.step4.example": "",
 
   "overview.pipeline.arrow.output": "Output:",
 
-  // Overview page — verification modes
-  "overview.modes.title": "Three Verification Modes",
-  "overview.mode.single.title": "Single Operation",
-  "overview.mode.single.description":
-    "Check all reachable states after one operation, including failure scenarios",
-  "overview.mode.single.scenario.scenario-1": "S1: Capacity Bottleneck",
-  "overview.mode.single.scenario.scenario-2": "S2: Circular Dependency",
-  "overview.mode.single.scenario.scenario-5": "S5: Scale-Down Cascade",
-  "overview.mode.plan.title": "Plan Verification",
-  "overview.mode.plan.description":
-    "Check every intermediate state in a multi-step plan for race conditions",
-  "overview.mode.plan.scenario.scenario-3": "S3: Split-Brain Failover",
-  "overview.mode.concurrent.title": "Concurrent Operations",
-  "overview.mode.concurrent.description":
-    "Explore all interleavings of parallel operations to find dangerous combinations",
-  "overview.mode.concurrent.scenario.scenario-4": "S4: Operations Conflict",
+  // Overview page — lifecycle phases
+  "overview.phases.title": "Four Lifecycle Phases",
+
+  "overview.phase.realizability.title": "Phase ① Realizability Check",
+  "overview.phase.realizability.description": "Verify specification consistency before building",
+  "overview.phase.realizability.scenario.scenario-1": "SLO Conflict Detection",
+
+  "overview.phase.synthesis.title": "Phase ② Reactive Synthesis",
+  "overview.phase.synthesis.description": "Auto-generate correct controllers from specifications",
+  "overview.phase.synthesis.scenario.scenario-2": "Elastic Strategy Synthesis",
+
+  "overview.phase.bmc.title": "Phase ③ Runtime Verification",
+  "overview.phase.bmc.description": "Verify changes and fault responses in real-time",
+  "overview.phase.bmc.scenario.scenario-3": "Emergency Hotfix",
+  "overview.phase.bmc.scenario.scenario-4": "Failover Split-Brain",
+
+  "overview.phase.feedback.title": "Phase ④ → ① Feedback Loop",
+  "overview.phase.feedback.description": "Post-incident analysis feeds back new specifications",
+  "overview.phase.feedback.scenario.scenario-5": "Retrospective & Feedback",
 
   // Back to overview
   "nav.backToOverview": "Overview",
@@ -102,7 +108,7 @@ const en = {
   "tla.specFilesChecked": "{count} spec file(s) checked",
 
   // Language toggle
-  "lang.switch": "\u4e2d\u6587",
+  "lang.switch": "中文",
 } as const;
 
 export type LocaleKeys = keyof typeof en;

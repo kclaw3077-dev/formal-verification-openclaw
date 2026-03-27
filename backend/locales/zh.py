@@ -3,442 +3,579 @@
 SCENARIOS = {
     # ── 场景 1 ──────────────────────────────────────────────────────────
     "scenario-1": {
-        "title": "场景一：滚动更新中的隐式容量瓶颈",
-        "subtitle": "一次看似安全的更新触发了隐藏的吞吐量危机",
+        "phase": "① 可实现性检查",
+        "title": "规约冲突检测",
+        "subtitle": "大促前规约验证",
         "description": (
-            "Agent 收到指令：对 order-svc 进行滚动更新（v1→v2）。"
-            "更新过程每次只下线 1 个副本（保持 2/3 可用），看起来很安全。"
-            "但 order-svc 依赖的 inventory-svc 在东区只有 2 个副本，"
-            "且其中一个正处于 GC 停顿状态。TLA+ 模型检查器探索了完整请求链路，"
-            "发现有效吞吐量降到了安全阈值以下。"
+            "大促前，SRE 团队为支付链路定义三条 SLO：99.99% 可用性、P99 延迟 < 200ms、"
+            "pay-svc 与 database 之间强一致性。Realizability Check 发现在当前双 AZ 部署下，"
+            "三条规约不可同时满足。"
         ),
         "constraints": [
             {
-                "name": "AvailabilityFloor",
-                "expression": "\\A s \\in CriticalPath : EffectiveCapacity(s) >= 66%",
-                "threshold": "66%",
-                "description": "关键请求路径上的有效容量必须保持在 66% 以上",
+                "name": "Availability_99_99",
+                "expression": "Availability(pay-svc) >= 0.9999",
+                "threshold": "99.99%",
+                "description": "支付服务可用性必须达到 99.99%",
             },
             {
-                "name": "MinSafeReplicas",
-                "expression": "TotalReplicas(s) >= MinSafeReplicas[s]",
-                "threshold": "order-svc: 2, inventory-svc: 2",
-                "description": "滚动更新始终保持至少 2/3 的副本在运行",
+                "name": "LatencyP99_200ms",
+                "expression": "P99Latency(pay-svc) <= 200",
+                "threshold": "200ms",
+                "description": "支付链路 P99 延迟必须低于 200ms",
+            },
+            {
+                "name": "StrongConsistency",
+                "expression": 'ConsistencyLevel(pay-svc, database) = "strong"',
+                "threshold": "强一致",
+                "description": "pay-svc 与 database 之间同步复制",
             },
         ],
         "spec_refs": {
             "SREInfrastructure.tla": {
-                "defines": ["Services", "Regions", "serviceState", "RollingUpdate", "ReplicaFailure", "EffectiveCapacity"],
-                "relevant_section": "建模服务状态转换与滚动更新对有效容量的影响",
+                "defines": ["Services", "Regions", "SwitchTraffic", "SwitchDBWrites"],
+                "relevant_section": "多区域服务模型与故障转移操作",
             },
             "Properties.tla": {
-                "defines": ["AvailabilityFloor", "MinimumRedundancy", "NoSimultaneousUpdatesOnChain"],
-                "relevant_section": "AvailabilityFloor 不变量捕获了链路吞吐量降至 66% 安全下限以下",
+                "defines": ["TrafficWriteConsistency", "AvailabilityFloor"],
+                "relevant_section": "一致性与可用性不变量",
             },
         },
         "steps": {
             1: {
-                "title": "背景：inventory-svc GC 停顿",
+                "title": "定义支付链路 SLO",
                 "description": (
-                    "inventory-svc 东区第 2 个副本进入长时间 GC 停顿，"
-                    "有效容量降至 1/2。"
-                    "由于这是环境事件（非 Agent 操作），"
-                    "验证门禁仅执行基础健康监控："
-                    "副本数仍为 2（Pod 在运行，只是变慢），"
-                    "MinimumRedundancy 通过。"
-                    "AvailabilityFloor（链路吞吐量分析）仅在 Agent 提出变更时触发。"
+                    "SRE 团队为支付关键路径定义三条同时要求：99.99% 可用性、"
+                    "P99 延迟 < 200ms、强一致性。在双 AZ 部署下，强一致性要求跨 AZ 同步复制。"
+                    "当一个 AZ 故障时，同步复制增加的延迟会将 P99 推至 200ms 以上，"
+                    "迫使可用性降至 99.99% 以下。"
                 ),
-                "agent_action": "[环境事件] 检测到 inventory-svc GC 停顿",
+                "agent_action": "define_slo(availability=99.99%, latency_p99<200ms, consistency=strong)",
             },
             2: {
-                "title": "Agent 操作：滚动更新 order-svc",
+                "title": "放松规约",
                 "description": (
-                    "Agent 提议：对 order-svc 东区执行滚动更新（v1→v2）。"
-                    "更新期间，3 个 order-svc 副本中有 1 个正在被替换，"
-                    "因此 order-svc 有效容量 = 2.5/3。"
-                    "但 order-svc 依赖的 inventory-svc 已经只有 1/2 的容量。"
-                    "链路综合容量：min(2.5/3, 1/2) = 50% —— 低于 66% 的安全下限。"
+                    "将强一致性调整为最终一致（有界过期）用于非关键读取。"
+                    "支付写入保持强一致性，P99 放松至 500ms；"
+                    "非关键查询路径使用最终一致性，P99 < 200ms。"
+                    "重新检查确认放松后的规约集可实现。"
                 ),
-                "agent_action": "rolling_update(order-svc, east, v1→v2)",
+                "agent_action": "relax_spec(critical_path=strong+500ms, query_path=eventual+200ms)",
             },
         },
         "violations": {
-            "AvailabilityFloor": (
-                "关键路径上的有效容量降至安全阈值以下。"
-                "order-svc（部署中）→ inventory-svc（降级）："
-                "链路吞吐量 = min(83%, 50%) = 50%，低于 66% 的安全下限。"
+            "RealizabilityConflict": (
+                "在双 AZ 部署下，东区故障时，同步复制到西区增加 150-300ms 延迟。"
+                "这使得在保持强一致性和 99.99% 可用性的同时无法满足 P99 < 200ms。"
+                "这是 CAP 定理在具体部署拓扑上的体现。"
             ),
         },
         "trace": {
-            1: "初始状态：所有服务正常运行",
-            2: "inventory-svc 东区副本进入 GC 停顿",
-            3: "Agent 启动 order-svc 东区滚动更新",
+            1: "初始状态：双 AZ 部署，东区为主，启用同步复制",
+            2: "东区数据库主节点发生网络分区",
+            3: (
+                "强一致性要求西区确认后才能提交写入 → 增加 150-300ms 跨 AZ 延迟 "
+                "→ P99 超过 200ms → 必须拒绝写入以维持延迟 SLO → 可用性降至 99.99% 以下"
+            ),
         },
         "counterexample": {
-            1: "初始：全部健康",
-            2: "ReplicaFailure(inventory-svc, east)",
-            3: "RollingUpdate(order-svc, east)",
+            1: "状态：{east: 主节点, west: 副本, sync_replication: true, all_healthy: true} — 三条 SLO 全部满足",
+            2: "事件：东区网络分区 → 同步复制延迟升至 280ms",
+            3: (
+                "冲突：P99=280ms > 200ms 阈值。要维持 P99 < 200ms，必须拒绝慢写入 "
+                "→ 可用性=99.91% < 99.99%。三条 SLO 在此拓扑下构成不可能三角。"
+            ),
         },
         "tla_spec": (
-            "\\* 被违反的关键不变量：\n"
-            "AvailabilityFloor ==\n"
-            "    \\A s \\in CriticalPath :\n"
-            "        EffectiveCapacity(s) * 2 >= MinSafeReplicas[s]\n\n"
-            "\\* 模型检查器探索了以下状态：\n"
-            "\\* - inventory-svc 处于降级状态（GC 停顿）\n"
-            "\\* - order-svc 进入部署状态\n"
-            "\\* 链路综合容量降至阈值以下。"
+            "--------------------------- MODULE RealizabilityCheck ---------------------------\n"
+            "EXTENDS Integers, FiniteSets\n"
+            "CONSTANTS Services, Regions, SyncLatencyMs\n"
+            "VARIABLES activeRegion, dbWriteRegion, replicationMode, p99Latency, availability\n\n"
+            "vars == <<activeRegion, dbWriteRegion, replicationMode, p99Latency, availability>>\n\n"
+            "TypeOK ==\n"
+            "    /\\ activeRegion \\in Regions\n"
+            "    /\\ dbWriteRegion \\in Regions\n"
+            "    /\\ replicationMode \\in {\"sync\", \"async\", \"bounded_staleness\"}\n"
+            "    /\\ p99Latency \\in 0..1000\n"
+            "    /\\ availability \\in 0..10000  \\* basis points (99.99% = 9999)\n\n"
+            "Init ==\n"
+            "    /\\ activeRegion = \"east\"\n"
+            "    /\\ dbWriteRegion = \"east\"\n"
+            "    /\\ replicationMode = \"sync\"\n"
+            "    /\\ p99Latency = 50\n"
+            "    /\\ availability = 9999\n\n"
+            "RegionFailure(r) ==\n"
+            "    /\\ r = activeRegion\n"
+            "    /\\ IF replicationMode = \"sync\"\n"
+            "       THEN /\\ p99Latency' = p99Latency + SyncLatencyMs\n"
+            "            /\\ IF p99Latency' > 200\n"
+            "               THEN availability' = availability - 8  \\* reject slow writes\n"
+            "               ELSE availability' = availability\n"
+            "       ELSE /\\ p99Latency' = p99Latency + 10\n"
+            "            /\\ availability' = availability\n"
+            "    /\\ UNCHANGED <<activeRegion, dbWriteRegion, replicationMode>>\n\n"
+            "\\* The three SLOs — realizability requires all hold simultaneously\n"
+            "SLO_Availability == availability >= 9999\n"
+            "SLO_LatencyP99   == p99Latency <= 200\n"
+            "SLO_Consistency  == replicationMode = \"sync\"\n\n"
+            "AllSLOsSatisfied == SLO_Availability /\\ SLO_LatencyP99 /\\ SLO_Consistency\n"
+            "=============================================================================\n"
         ),
     },
 
     # ── 场景 2 ──────────────────────────────────────────────────────────
     "scenario-2": {
-        "title": "场景二：隐蔽的循环依赖",
-        "subtitle": "一个退款功能引入了不可见的死锁风险",
+        "phase": "② 反应式合成",
+        "title": "弹性策略合成",
+        "subtitle": "自动生成正确的弹性控制器",
         "description": (
-            "Agent 收到指令：在 pay-svc 的退款流程中添加订单状态校验"
-            "（pay-svc 需要调用 order-svc）。当前依赖：order-svc → pay-svc（用于支付）。"
-            "新增后变成 order-svc ⇄ pay-svc 双向依赖。"
-            "这个循环仅在退款路径上触发，正常支付流程中完全不可见。"
-            "TLA+ 传递闭包分析瞬间捕获了这个循环。"
+            "基于场景一修正后的规约，Reactive Synthesis 自动生成流量调度与弹性伸缩控制器。"
+            "不再需要人工编写 SOP，合成器通过博弈求解产出 correct-by-construction 的状态机，"
+            "发现了人工推演容易遗漏的约束条件。"
         ),
         "constraints": [
             {
-                "name": "NoCyclicDependencies",
-                "expression": "\\A s \\in Services : s \\notin ReachableFrom(s, {}, deps)",
-                "threshold": "0 个循环",
-                "description": "服务依赖图必须是有向无环图（DAG）——不允许循环依赖",
+                "name": "AvailabilityFloor",
+                "expression": "\\A s \\in CriticalPath : EffectiveCapacity(s) * 2 >= MinSafeReplicas[s]",
+                "threshold": "66%",
+                "description": "关键路径服务必须维持至少 66% 有效吞吐量",
+            },
+            {
+                "name": "MinimumRedundancy",
+                "expression": "\\A s \\in CriticalPath : TotalReplicas(s) >= MinSafeReplicas[s]",
+                "threshold": "按服务配置",
+                "description": "每个关键服务维持最小安全副本数",
+            },
+            {
+                "name": "NoSimultaneousUpdatesOnChain",
+                "expression": "\\A s,t : s->t => ~(deploying(s) /\\ deploying(t))",
+                "threshold": "N/A",
+                "description": "依赖链上的服务不能同时处于部署状态",
             },
         ],
         "spec_refs": {
             "SREInfrastructure.tla": {
-                "defines": ["Services", "dependencies", "AddDependency", "ReachableFrom"],
-                "relevant_section": "建模依赖图和传递闭包计算，用于循环检测",
+                "defines": ["Services", "Regions", "serviceState", "RollingUpdate", "ScaleUp", "EffectiveCapacity"],
+                "relevant_section": "服务状态转换模型与弹性伸缩操作",
             },
             "Properties.tla": {
-                "defines": ["NoCyclicDependencies", "HasCycle"],
-                "relevant_section": "NoCyclicDependencies 不变量通过传递闭包检测依赖图中的任何循环",
+                "defines": ["AvailabilityFloor", "MinimumRedundancy", "NoSimultaneousUpdatesOnChain"],
+                "relevant_section": "安全不变量集合，作为合成器的输入规约",
             },
         },
         "steps": {
             1: {
-                "title": "Agent 操作：添加退款校验依赖",
+                "title": "输入规约到合成器",
                 "description": (
-                    "产品团队要求：在处理退款前，pay-svc 应该调用 order-svc "
-                    "来验证订单状态。这看起来是合理的业务需求。"
-                    "Agent 提议添加这条依赖。"
+                    "将环境模型（流量范围 1x-10x、单 AZ 最大 pod 数、AZ 故障概率）"
+                    "和安全规约（AvailabilityFloor、MinimumRedundancy、"
+                    "NoSimultaneousUpdatesOnChain）输入反应式合成引擎。"
                 ),
-                "agent_action": "add_dependency(pay-svc → order-svc, purpose='refund_verification')",
+                "agent_action": "synthesize(env_model={traffic:1x-10x, max_pods:20}, safety_specs=[AvailabilityFloor, MinimumRedundancy, NoSimultaneousUpdatesOnChain])",
             },
             2: {
-                "title": "TLA+ 建议：打破循环",
+                "title": "发现互斥约束",
                 "description": (
-                    "验证器不仅捕获了循环，模型还表明另一种设计——"
-                    "使用异步事件总线代替同步调用——可以消除循环依赖。"
-                    "pay-svc 发布 'refund_requested' 事件，"
-                    "由独立的对账服务检查订单状态。"
+                    "合成器通过博弈论分析发现关键约束：当流量超过 8 倍时，扩缩容与滚动更新互斥。"
+                    "在 8 倍流量下，滚动更新期间的 EffectiveCapacity 恰好降至 AvailabilityFloor 边界。"
+                    "任何并发的扩缩容操作会进一步临时降低容量，违反安全下限。"
                 ),
-                "agent_action": "[建议] 使用事件驱动模式避免同步循环",
+                "agent_action": "synthesis_result: guard(traffic > 8x → mutex(scale, rolling_update))",
+            },
+            3: {
+                "title": "生成完整控制器",
+                "description": (
+                    "合成器输出完整的状态机，包含所有守卫条件：inventory-svc 必须先于 "
+                    "order-svc 扩容（瓶颈优先）、单 AZ 故障转移必须先切写入再切流量（防脑裂）、"
+                    "以及 8 倍流量互斥守卫。控制器是 correct-by-construction 的。"
+                ),
+                "agent_action": "output: StateMachine(states=4, transitions=12, guards=6)",
             },
         },
-        "violations": {
-            "NoCyclicDependencies": (
-                "检测到循环依赖："
-                "order-svc → pay-svc → order-svc。"
-                "此循环会产生死锁风险：如果 order-svc 响应慢，"
-                "pay-svc 退款调用阻塞，进而阻塞 order-svc 的支付回调，"
-                "形成级联超时螺旋。"
-            ),
-        },
+        "violations": {},
         "trace": {
-            1: "当前：order-svc 依赖 pay-svc",
-            2: "提议：pay-svc 添加对 order-svc 的依赖",
-            3: "发现循环：order-svc → pay-svc → order-svc",
+            1: "合成引擎探索环境模型：traffic ∈ {1x, 2x, 4x, 8x, 10x}",
+            2: "在 traffic=8x 时：滚动更新期间 EffectiveCapacity = MinSafeReplicas × 0.66 — 恰好在边界",
+            3: "在 traffic=8x + 并发扩容时：pod 初始化期间临时容量下降 → EffectiveCapacity < AvailabilityFloor",
+            4: "合成器添加守卫：traffic_multiplier <= 8 ∨ ¬rolling_update_in_progress",
         },
-        "counterexample": {
-            1: "初始：DAG 无环",
-            2: "AddDependency(pay-svc, order-svc)",
-        },
+        "counterexample": {},
         "tla_spec": (
-            "\\* 通过传递闭包检测循环：\n"
-            "RECURSIVE ReachableFrom(_,_,_)\n"
-            "ReachableFrom(s, visited, deps) ==\n"
-            "    LET directDeps == deps[s] \\\\ visited\n"
-            "    IN  directDeps \\cup\n"
-            "        UNION {ReachableFrom(d, visited \\cup directDeps, deps) : d \\in directDeps}\n\n"
-            "HasCycle(deps) ==\n"
-            "    \\E s \\in Services : s \\in ReachableFrom(s, {}, deps)\n\n"
-            "NoCyclicDependencies == ~HasCycle(dependencies)"
+            "--------------------------- MODULE ReactiveSynthesis ---------------------------\n"
+            "EXTENDS Integers, FiniteSets\n"
+            "CONSTANTS Services, Regions, MaxPods, TrafficLevels\n"
+            "VARIABLES serviceState, replicaCount, trafficMultiplier, controllerState\n\n"
+            "vars == <<serviceState, replicaCount, trafficMultiplier, controllerState>>\n\n"
+            "EffectiveCapacity(s) ==\n"
+            "    LET running == {r \\in Regions : serviceState[s][r] = \"running\"}\n"
+            "        deploying == {r \\in Regions : serviceState[s][r] = \"deploying\"}\n"
+            "    IN  Cardinality(running) + Cardinality(deploying) \\div 2\n\n"
+            "\\* Safety specifications (input to synthesizer)\n"
+            "AvailabilityFloor ==\n"
+            "    \\A s \\in Services :\n"
+            "        EffectiveCapacity(s) * 2 >= replicaCount[s]\n\n"
+            "\\* Synthesized guard: mutex at high traffic\n"
+            "SynthesizedGuard_HighTrafficMutex ==\n"
+            "    trafficMultiplier > 8 =>\n"
+            "        ~(\\E s \\in Services :\n"
+            "            /\\ serviceState[s][\"east\"] = \"deploying\"\n"
+            "            /\\ controllerState = \"scaling\")\n\n"
+            "\\* Synthesized guard: bottleneck-first scaling order\n"
+            "SynthesizedGuard_BottleneckFirst ==\n"
+            "    \\A s, t \\in Services :\n"
+            "        (s # t /\\ EffectiveCapacity(s) < EffectiveCapacity(t)) =>\n"
+            "            controllerState # \"scale_\" \\o t\n\n"
+            "ControllerCorrectness ==\n"
+            "    /\\ AvailabilityFloor\n"
+            "    /\\ SynthesizedGuard_HighTrafficMutex\n"
+            "    /\\ SynthesizedGuard_BottleneckFirst\n"
+            "=============================================================================\n"
         ),
     },
 
     # ── 场景 3 ──────────────────────────────────────────────────────────
     "scenario-3": {
-        "title": "场景三：Failover 中的脑裂",
-        "subtitle": "三步切换计划存在竞态条件窗口",
+        "phase": "③ 运行时验证",
+        "title": "变更验证——紧急 Hotfix",
+        "subtitle": "部署前安全检查发现复合故障",
         "description": (
-            "Agent 收到指令：将流量从东区切换到西区。"
-            "Agent 的计划：(1) 切换 DNS 到西区，(2) 等待 30 秒连接排空，"
-            "(3) 切换数据库写入到西区。TLA+ 发现在步骤 1 和步骤 3 之间，"
-            "流量已切到西区但数据库写入仍在东区——西区的读取会看到过期数据。"
-            "更严重的是：如果步骤 3 失败（网络分区），系统将永久处于不一致状态。"
+            "大促前一天，inventory-svc 发现库存扣减并发 bug，需要紧急滚动更新。"
+            "当前已为大促扩容至 4 副本（东 2 西 2）。Agent 提议标准滚动更新，"
+            "但 BMC 发现了一个危险的复合故障场景。"
         ),
         "constraints": [
             {
-                "name": "TrafficWriteConsistency",
-                "expression": "activeRegion = dbWriteRegion",
-                "threshold": "始终相等",
-                "description": "流量服务区域和数据库写入区域必须始终一致，避免读取过期数据",
+                "name": "AvailabilityFloor",
+                "expression": "\\A s \\in CriticalPath : EffectiveCapacity(s) * 2 >= MinSafeReplicas[s]",
+                "threshold": "66%",
+                "description": "关键路径服务必须维持至少 66% 有效吞吐量",
             },
             {
-                "name": "NoSplitBrain",
-                "expression": "dbWriteRegion \\in Regions",
-                "threshold": "恰好 1 个区域",
-                "description": "任何时刻最多只有一个区域可以接受数据库写入——绝不允许同时写入两个区域",
+                "name": "MinimumRedundancy",
+                "expression": "\\A s \\in CriticalPath : TotalReplicas(s) >= MinSafeReplicas[s]",
+                "threshold": "按服务配置",
+                "description": "每个关键服务维持最小安全副本数",
             },
         ],
         "spec_refs": {
             "SREInfrastructure.tla": {
-                "defines": ["Regions", "activeRegion", "dbWriteRegion", "SwitchTraffic", "SwitchDBWrites"],
-                "relevant_section": "建模多区域切换状态机，流量开关和写入开关分别建模",
+                "defines": ["Services", "Regions", "serviceState", "RollingUpdate", "ReplicaFailure", "EffectiveCapacity"],
+                "relevant_section": "建模滚动更新与副本降级的复合状态转换",
             },
             "Properties.tla": {
-                "defines": ["TrafficWriteConsistency", "NoSplitBrain"],
-                "relevant_section": "TrafficWriteConsistency 捕获流量和写入在不同区域的窗口期",
+                "defines": ["AvailabilityFloor", "MinimumRedundancy"],
+                "relevant_section": "AvailabilityFloor 在复合故障场景下捕获链路吞吐量降至安全下限以下",
             },
         },
         "steps": {
             1: {
-                "title": "Agent 操作：将流量切换到西区",
+                "title": "Agent 提议滚动更新",
                 "description": (
-                    "Agent 执行切换计划的第一步：将 DNS 指向西区。"
-                    "新请求现在转到西区。但数据库写入仍在东区。"
-                    "西区服务的写入需要跨区域到东区 DB（高延迟），"
-                    "且西区副本的读取可能看到过期数据。"
+                    "Agent 对 inventory-svc（4 副本：东 2 西 2）提议滚动更新。"
+                    "BMC 在 3 步内穷举所有可达状态。在第 2 步，当东区 pod-1 正在更新"
+                    "（容量减半）时，如果 order-svc 东区 pod-2 同时进入 GC 停顿（降级状态），"
+                    "关键链路 gateway→order-svc→inventory-svc 有效吞吐量降至 50%，"
+                    "低于 66% 的 AvailabilityFloor。"
                 ),
-                "agent_action": "switch_traffic(west)",
+                "agent_action": "rolling_update(service=inventory-svc, strategy=one-at-a-time)",
             },
             2: {
-                "title": "TLA+ 建议：原子性切换协议",
+                "title": "调整方案：先扩容再更新",
                 "description": (
-                    "正确的顺序是：(1) 停止东区写入，(2) 等待复制同步，"
-                    "(3) 启用西区写入，(4) 切换流量。这确保每个中间状态都满足一致性。"
-                    "TLA+ 验证了这个替代方案在每个中间状态都满足 TrafficWriteConsistency。"
+                    "Agent 调整方案：先将 inventory-svc 扩容至 6 副本（东 3 西 3），"
+                    "再执行滚动更新。6 副本下，即使更新 + GC 停顿复合场景，"
+                    "有效吞吐量仍保持在 66% — 恰好在安全边界。"
+                    "BMC 验证 3 步内所有可达状态均通过。"
                 ),
-                "agent_action": "[修正方案] stop_writes(east) → sync → enable_writes(west) → switch_traffic(west)",
+                "agent_action": "scale_up(inventory-svc, to=6) && rolling_update(inventory-svc)",
             },
         },
         "violations": {
-            "TrafficWriteConsistency": (
-                "将流量切换到西区后，数据库写入仍在东区。"
-                "状态：activeRegion=west, dbWriteRegion=east。"
-                "这违反了 TrafficWriteConsistency：读取可能返回过期数据。"
-                "不一致持续时间取决于步骤 3 何时完成。"
+            "AvailabilityFloor": (
+                "滚动更新第 2 步期间，东区 pod-1 部署中（东区容量 50%）"
+                "且 order-svc 东区 pod-2 GC 停顿（降级），"
+                "关键链路 gateway→order-svc→inventory-svc 有效吞吐量降至 50%，"
+                "低于 66% 的 AvailabilityFloor。"
             ),
         },
         "trace": {
-            1: "初始：traffic=east, writes=east（一致）",
-            2: "SwitchTraffic(west): traffic=west, writes=east",
+            1: "初始：inventory-svc 4 副本（2E/2W），全部运行。链路吞吐量 = 100%",
+            2: "步骤 1：对 inventory-svc east-pod-1 执行滚动更新 → 东区容量 = 1 运行 + 1 部署中（50%）→ 链路吞吐量 = 75%",
+            3: "步骤 2：order-svc east-pod-2 进入 GC 停顿（降级）→ order-svc 东区有效 = 66% → 组合链路吞吐量 = 75% × 66% ≈ 50% < 66% AvailabilityFloor ✗",
         },
         "counterexample": {
-            1: "初始：activeRegion=east, dbWriteRegion=east",
-            2: "SwitchTraffic(west)",
-            3: "[网络分区] SwitchDBWrites 失败",
+            1: "状态：{inventory-svc: 2E/2W 运行, order-svc: 3E/3W 运行} — 吞吐量=100%",
+            2: "操作：rolling_update(inventory-svc, east-pod-1) → {inventory-svc 东区: 1 运行 + 1 部署中} — 吞吐量=75%",
+            3: "环境：order-svc east-pod-2 GC 停顿 → {order-svc 东区: 2 运行 + 1 降级} — 链路吞吐量=50% < 66% ✗ 违反",
         },
         "tla_spec": (
-            "\\* 两个关键属性：\n"
-            "NoSplitBrain ==\n"
-            "    dbWriteRegion \\in Regions  \\* 永远不能为 \"both\"\n\n"
-            "TrafficWriteConsistency ==\n"
-            "    activeRegion = dbWriteRegion\n\n"
-            "\\* TLC 发现先执行 SwitchTraffic(west) 再执行 SwitchDBWrites(west)\n"
-            "\\* 会产生违反 TrafficWriteConsistency 的中间状态。\n"
-            "\\* 安全的顺序：先切换写入，再切换流量。"
+            "--------------------------- MODULE BMCChangeVerification ---------------------------\n"
+            "EXTENDS Integers, FiniteSets\n"
+            "CONSTANTS Services, Regions, MinSafeReplicas\n"
+            "VARIABLES serviceState, replicaCount, deployingSet\n\n"
+            "vars == <<serviceState, replicaCount, deployingSet>>\n\n"
+            "EffectiveCapacity(s, r) ==\n"
+            "    LET total == replicaCount[s][r]\n"
+            "        deploying == IF <<s, r>> \\in deployingSet THEN 1 ELSE 0\n"
+            "        degraded  == IF serviceState[s][r] = \"gc_pause\" THEN 1 ELSE 0\n"
+            "    IN  total - deploying - (degraded \\div 2)\n\n"
+            "ChainThroughput(chain) ==\n"
+            "    \\* Minimum effective capacity across the chain\n"
+            "    LET caps == {EffectiveCapacity(s, \"east\") : s \\in chain}\n"
+            "    IN  CHOOSE c \\in caps : \\A c2 \\in caps : c <= c2\n\n"
+            "RollingUpdate(s, r) ==\n"
+            "    /\\ replicaCount[s][r] >= 2\n"
+            "    /\\ deployingSet' = deployingSet \\cup {<<s, r>>}\n"
+            "    /\\ UNCHANGED <<serviceState, replicaCount>>\n\n"
+            "GCPause(s, r) ==\n"
+            "    /\\ serviceState' = [serviceState EXCEPT ![s][r] = \"gc_pause\"]\n"
+            "    /\\ UNCHANGED <<replicaCount, deployingSet>>\n\n"
+            "AvailabilityFloor ==\n"
+            "    \\A s \\in Services :\n"
+            "        EffectiveCapacity(s, \"east\") * 3 >= replicaCount[s][\"east\"] * 2\n\n"
+            "\\* BMC checks: within 3 steps, is there a reachable state violating AvailabilityFloor?\n"
+            "=============================================================================\n"
         ),
     },
 
     # ── 场景 4 ──────────────────────────────────────────────────────────
     "scenario-4": {
-        "title": "场景四：并发操作冲突",
-        "subtitle": "两个安全操作组合成一个危险状态",
+        "phase": "③ 运行时验证",
+        "title": "故障拦截——Failover 脑裂",
+        "subtitle": "数据库故障转移中的脑裂预防",
         "description": (
-            "Agent 收到两个独立的运维请求："
-            "(A) 给 user-svc 打安全补丁，(B) 扩容数据库副本。"
-            "每个操作单独来看都是安全的。但 TLA+ 状态空间探索发现，"
-            "两者并发执行时，user-svc 重启后重连数据库，"
-            "而此时数据库正在 rebalance。重连风暴 + rebalance 开销"
-            "级联导致集群级别的故障。"
+            "大促当天峰值期间，东区数据库主节点出现延迟抖动（50% 请求超时）。"
+            "场景二合成的控制器触发故障转移。Agent 生成两步计划：先切流量到西区，"
+            "再切写入到西区。BMC 检测到此顺序存在脑裂风险。"
         ),
         "constraints": [
             {
-                "name": "NoSimultaneousUpdatesOnChain",
-                "expression": "\\A s, t on same chain : ~(deploying(s) /\\ deploying(t))",
-                "threshold": "每条链路最多 1 个部署中",
-                "description": "同一依赖链路上的两个服务不能同时处于部署状态",
+                "name": "TrafficWriteConsistency",
+                "expression": "activeRegion = dbWriteRegion",
+                "threshold": "必须一致",
+                "description": "流量区域和写入区域必须相同以防止脑裂",
+            },
+            {
+                "name": "NoSplitBrain",
+                "expression": "dbWriteRegion \\in Regions",
+                "threshold": "单区域",
+                "description": "数据库写入必须来自且仅来自一个区域",
             },
         ],
         "spec_refs": {
             "SREInfrastructure.tla": {
-                "defines": ["Services", "dependencies", "serviceState", "RollingUpdate", "ScaleUp"],
-                "relevant_section": "建模滚动更新和扩容的并发执行，作为交错的状态转换",
+                "defines": ["Regions", "activeRegion", "dbWriteRegion", "SwitchTraffic", "SwitchDBWrites"],
+                "relevant_section": "多区域故障转移状态机，流量切换与写入切换分别建模",
             },
             "Properties.tla": {
-                "defines": ["NoSimultaneousUpdatesOnChain", "AvailabilityFloor"],
-                "relevant_section": "NoSimultaneousUpdatesOnChain 检测 user-svc 和 database 同时部署的危险交错",
+                "defines": ["TrafficWriteConsistency", "NoSplitBrain"],
+                "relevant_section": "TrafficWriteConsistency 捕获流量和写入在不同区域的脑裂窗口",
             },
         },
         "steps": {
             1: {
-                "title": "请求 A：user-svc 安全补丁",
+                "title": "Agent 计划：先切流量",
                 "description": (
-                    "安全团队要求：给 user-svc 打 CVE-2024-XXXX 补丁。"
-                    "需要滚动重启。单独来看是安全的：3 个副本，"
-                    "滚动更新始终保持 2 个运行。"
+                    "Agent 生成故障转移计划：步骤 A — SwitchTraffic(west)，"
+                    "步骤 B — SwitchDBWrites(west)。BMC 检查此两步计划所有可达状态。"
+                    "步骤 A 完成后、步骤 B 执行前，activeRegion=west 但 dbWriteRegion=east。"
+                    "西区 pay-svc 接收流量并尝试写入，但写入路由到东区数据库（仍是写主节点）。"
+                    "同时东区数据库正在恢复，可能接受部分写入，造成脑裂窗口。"
                 ),
-                "agent_action": "rolling_update(user-svc, east, security_patch)",
+                "agent_action": "failover_plan: [SwitchTraffic(west), SwitchDBWrites(west)]",
             },
             2: {
-                "title": "请求 B：数据库副本扩容",
+                "title": "修正计划：先切写入",
                 "description": (
-                    "DBA 团队要求：给东区数据库增加 1 个副本以提升容量。"
-                    "单独来看是安全的：添加副本不会影响现有副本。"
-                    "但 rebalance 期间，现有副本延迟会升高。"
+                    "Agent 反转顺序：步骤 A — SwitchDBWrites(west)，"
+                    "步骤 B — SwitchTraffic(west)。BMC 验证：步骤 A 后，"
+                    "dbWriteRegion=west，activeRegion=east — 流量仍在东区，"
+                    "写入转发到西区（安全，只是稍慢）。步骤 B 后，两个区域对齐。"
+                    "不存在脑裂窗口。"
                 ),
-                "agent_action": "scale_up(database, east, 1) + rebalance",
-            },
-            3: {
-                "title": "组合：两个操作并发执行",
-                "description": (
-                    "当两个操作同时执行时，TLA+ 发现了一个危险的交错序列："
-                    "(1) user-svc 副本重启，(2) 重连数据库，"
-                    "(3) 数据库正在 rebalance → 连接被拒绝，"
-                    "(4) user-svc 重试风暴压垮数据库，"
-                    "(5) 其他服务的数据库连接也被拒绝。"
-                    "这种组合爆炸是人工推理极易遗漏的。"
-                ),
-                "agent_action": "[并发] rolling_update(user-svc) + scale_up(database)",
+                "agent_action": "failover_plan: [SwitchDBWrites(west), SwitchTraffic(west)]",
             },
         },
         "violations": {
-            "NoSimultaneousUpdatesOnChain": (
-                "user-svc 和 database 在同一依赖链上"
-                "（user-svc → database）。两者同时进入部署状态"
-                "违反了 NoSimultaneousUpdatesOnChain 属性。"
-                "在重叠窗口期，user-svc 重连风暴 + "
-                "数据库 rebalance 会产生级联故障。"
+            "TrafficWriteConsistency": (
+                "SwitchTraffic(west) 之后、SwitchDBWrites(west) 之前，"
+                "activeRegion=west ≠ dbWriteRegion=east。"
+                "流量到达西区服务后尝试写入东区数据库。"
+                "存在约 30 秒窗口期两个区域同时接受写入，导致数据不一致。"
             ),
         },
         "trace": {
-            1: "初始：所有服务正常运行",
-            2: "RollingUpdate(user-svc, east)",
-            3: "ScaleUp(database, east, 1) 触发 rebalance",
+            1: "初始：activeRegion=east, dbWriteRegion=east, 东区数据库延迟抖动",
+            2: "操作：SwitchTraffic(west) → activeRegion=west, dbWriteRegion=east — 不匹配",
+            3: "窗口：西区 pay-svc 收到订单 → 写入路由到东区 DB（慢/失败）→ 超时 → 重试可能命中西区 DB 副本 → 脑裂",
         },
         "counterexample": {
-            1: "初始：全部运行中",
-            2: "RollingUpdate(user-svc, east)",
-            3: "ScaleUp(database, east, 1) + rebalance",
+            1: "状态：{activeRegion: east, dbWriteRegion: east} — 一致 ✓",
+            2: "操作：SwitchTraffic(west) → {activeRegion: west, dbWriteRegion: east} — TrafficWriteConsistency 违反 ✗",
+            3: "后果：西区 pay-svc 写入东区 DB（300ms 延迟 + 50% 超时），东区 DB 恢复中仍可接受本地写入",
         },
         "tla_spec": (
-            "\\* 关键属性：同一链路上的两个服务不能同时更新\n"
-            "NoSimultaneousUpdatesOnChain ==\n"
-            "    \\A s \\in Services : \\A t \\in dependencies[s] :\n"
-            "        ~(\\E r1, r2 \\in Regions :\n"
-            "            serviceState[s][r1] = \"deploying\" /\\ serviceState[t][r2] = \"deploying\")\n\n"
-            "\\* TLC 探索了 8,923 个状态，找到了\n"
-            "\\* user-svc 和 database 同时处于部署状态的交错序列。\n"
-            "\\* 每个操作单独安全，组合后不安全。"
+            "--------------------------- MODULE FailoverSplitBrain ---------------------------\n"
+            "EXTENDS Integers, FiniteSets\n"
+            "CONSTANTS Regions\n"
+            "VARIABLES activeRegion, dbWriteRegion, dbHealth\n\n"
+            "vars == <<activeRegion, dbWriteRegion, dbHealth>>\n\n"
+            "TypeOK ==\n"
+            "    /\\ activeRegion \\in Regions\n"
+            "    /\\ dbWriteRegion \\in Regions\n"
+            "    /\\ dbHealth \\in [Regions -> {\"healthy\", \"degraded\", \"down\"}]\n\n"
+            "Init ==\n"
+            "    /\\ activeRegion = \"east\"\n"
+            "    /\\ dbWriteRegion = \"east\"\n"
+            "    /\\ dbHealth = [r \\in Regions |-> \"healthy\"]\n\n"
+            "SwitchTraffic(r) ==\n"
+            "    /\\ activeRegion' = r\n"
+            "    /\\ UNCHANGED <<dbWriteRegion, dbHealth>>\n\n"
+            "SwitchDBWrites(r) ==\n"
+            "    /\\ dbWriteRegion' = r\n"
+            "    /\\ UNCHANGED <<activeRegion, dbHealth>>\n\n"
+            "DBDegraded(r) ==\n"
+            "    /\\ dbHealth' = [dbHealth EXCEPT ![r] = \"degraded\"]\n"
+            "    /\\ UNCHANGED <<activeRegion, dbWriteRegion>>\n\n"
+            "\\* Key safety properties\n"
+            "NoSplitBrain ==\n"
+            "    dbWriteRegion \\in Regions  \\* never \"both\"\n\n"
+            "TrafficWriteConsistency ==\n"
+            "    activeRegion = dbWriteRegion\n\n"
+            "\\* BMC finds: SwitchTraffic(west) then SwitchDBWrites(west)\n"
+            "\\* creates intermediate state violating TrafficWriteConsistency.\n"
+            "\\* Safe sequence: SwitchDBWrites first, then SwitchTraffic.\n"
+            "=============================================================================\n"
         ),
     },
 
     # ── 场景 5 ──────────────────────────────────────────────────────────
     "scenario-5": {
-        "title": "场景五：缩容的级联效应",
-        "subtitle": "成本优化引入了单点故障",
+        "phase": "④ 事后复盘 → ①",
+        "title": "故障回溯与闭环",
+        "subtitle": "从事故分析到规约演进",
         "description": (
-            "Agent 观测到凌晨 3 点流量低谷，提议：将 inventory-svc 东区"
-            "从 2 个副本缩容到 1 个以节约成本。看起来合理——流量只有峰值的 20%。"
-            "但 TLA+ 穷举检查了缩容后的所有状态（包括故障场景）："
-            "如果唯一剩余的副本发生故障，order-svc 和 pay-svc 都将失去库存服务能力。"
-            "关键路径可用性从 99.9% 降至 0%。"
-            "恢复时间（拉起新副本 + 数据预热）超过 SLA 允许的最大中断时间。"
+            "大促期间实际发生了一次级联故障：运营配置促销弹窗导致 user-svc 查询量 10 倍突增，"
+            "Redis 缓存热 key 被驱逐，user-svc 全量回源数据库，连接池耗尽，全链路 5xx。"
+            "BMC 逆向分析追踪最短故障路径，生成新规约反馈回阶段一。"
         ),
         "constraints": [
             {
-                "name": "MinimumRedundancy",
-                "expression": "\\A s \\in CriticalPath : TotalReplicas(s) >= MinSafeReplicas[s]",
-                "threshold": "inventory-svc: \u2265 2",
-                "description": "关键路径服务即使在变更后的故障场景中也必须维持最低副本数",
+                "name": "CacheHitRateFloor",
+                "expression": "\\A s \\in CachedServices : cacheHitRate[s] >= 50",
+                "threshold": "50%",
+                "description": "缓存依赖服务必须维持最低 50% 命中率",
             },
             {
-                "name": "SLA Compliance",
-                "expression": "RecoveryTime(s) <= MaxDowntime",
-                "threshold": "恢复 < 5 分钟",
-                "description": "任何单点故障的恢复时间必须在 SLA 最大中断窗口内",
+                "name": "AvailabilityFloor",
+                "expression": "\\A s \\in CriticalPath : EffectiveCapacity(s) * 2 >= MinSafeReplicas[s]",
+                "threshold": "66%",
+                "description": "关键路径服务必须维持至少 66% 有效吞吐量",
+            },
+            {
+                "name": "MinimumRedundancy",
+                "expression": "\\A s \\in CriticalPath : TotalReplicas(s) >= MinSafeReplicas[s]",
+                "threshold": "按服务配置",
+                "description": "每个关键服务维持最小安全副本数",
             },
         ],
         "spec_refs": {
             "SREInfrastructure.tla": {
-                "defines": ["Services", "CriticalPath", "TotalReplicas", "ScaleDown", "ReplicaFailure"],
-                "relevant_section": "建模缩容后副本故障的场景，探索所有变更后的可达状态",
+                "defines": ["Services", "CachedServices", "cacheHitRate", "RedisCacheBurst", "RateLimitService"],
+                "relevant_section": "扩展系统模型，新增缓存健康度状态与缓存驱逐故障模式",
             },
             "Properties.tla": {
-                "defines": ["MinimumRedundancy", "AvailabilityFloor", "NoCyclicDependencies"],
-                "relevant_section": "MinimumRedundancy 不变量通过找到 TotalReplicas = 0 的可达状态证明操作不安全",
+                "defines": ["CacheHitRateFloor", "AvailabilityFloor", "MinimumRedundancy"],
+                "relevant_section": "新增 CacheHitRateFloor 不变量，在缓存降级早期阶段捕获故障",
             },
         },
         "steps": {
             1: {
-                "title": "Agent 提议：成本优化缩容",
+                "title": "BMC 逆向：追踪故障路径",
                 "description": (
-                    "凌晨 3 点，流量为峰值的 20%。Agent 的成本优化模块建议："
-                    "将 inventory-svc 东区从 2→1 个副本，每月节省 $47。"
-                    "当前负载 1 个副本即可承载，还有 60% 的余量。"
+                    "从故障终态（全链路 5xx）出发，BMC 逆向搜索到达此状态的最短路径。"
+                    "结果：仅需 3 步 — (1) Redis 热 key 驱逐导致缓存命中率降至 12%，"
+                    "(2) user-svc 全量回源数据库，耗尽连接池，"
+                    "(3) 数据库不可用导致 order-svc 和 pay-svc 失败，触发全链路 5xx。"
+                    "根因：现有的 invariant 中没有缓存健康度相关的约束。"
                 ),
-                "agent_action": "scale_down(inventory-svc, east, 1)  # 低流量时节约成本",
+                "agent_action": "bmc_reverse(terminal_state=full_chain_5xx, max_depth=5)",
             },
             2: {
-                "title": "形式化保证：不降级原则",
+                "title": "生成新 Invariant",
                 "description": (
-                    "用 TLA+ 形式化的不降级原则："
-                    "对于操作后的所有可达状态（包括故障状态），"
-                    "可用性不得降低。这比仅检查操作后的即时状态更强——"
-                    "它检查每一个可能的未来。"
-                    "每月省 $47 不值得冒违反 SLA 的风险。"
+                    "基于故障路径分析，提出新的安全不变量：CacheHitRateFloor — "
+                    "所有缓存依赖服务必须维持至少 50% 缓存命中率。"
+                    "同时将新故障模式（CacheBurstEviction）和新防御操作（RateLimitService）"
+                    "加入系统模型。BMC 验证：如果 CacheHitRateFloor 存在，"
+                    "3 步故障路径在第 1 步（缓存命中率降至 12% < 50%）就会被捕获。"
                 ),
-                "agent_action": "[已拦截] 操作被验证门禁拒绝",
+                "agent_action": "propose_invariant(CacheHitRateFloor: cacheHitRate >= 50%)",
+            },
+            3: {
+                "title": "反馈阶段① — 重新检查可实现性",
+                "description": (
+                    "将扩展后的规约集（场景一的原始规约 + CacheHitRateFloor + "
+                    "CacheBurstEviction 故障模式）进行可实现性检查。"
+                    "结果：REALIZABLE。新规约集可以同时满足。"
+                    "场景二的控制器可以重新合成，将缓存健康度作为扩缩容决策的前置检查条件。"
+                    "闭环完成。"
+                ),
+                "agent_action": "realizability_check(specs=[relaxed_SLOs, CacheHitRateFloor, CacheBurstEviction])",
             },
         },
         "violations": {
-            "MinimumRedundancy": (
-                "缩容至 1 个副本后，inventory-svc 东区没有冗余。"
-                "TLA+ 探索了后继状态——该唯一副本故障的情况："
-                "TotalReplicas(inventory-svc) 在东区 = 0，低于 "
-                "MinSafeReplicas[inventory-svc] = 2。"
-                "这在关键路径上引入了单点故障"
-                "（gateway → order-svc → inventory-svc）。"
+            "CacheHitRateFloor": (
+                "Redis 热 key 驱逐导致缓存命中率降至 12%，远低于 50% 下限。"
+                "没有此不变量，监控系统无法在级联到达数据库层之前触发防御措施"
+                "（限流、缓存扩容）。"
             ),
         },
         "trace": {
-            1: "初始：inventory-svc 东区 = 2 个副本",
-            2: "ScaleDown(inventory-svc, east, 1)",
-            3: "ReplicaFailure(inventory-svc, east) —— 单点故障",
-            4: "级联：order-svc 无法访问 inventory-svc",
+            1: "初始：所有服务运行中，redis cache_hit_rate=99%，数据库连接=20% 使用",
+            2: "事件：促销弹窗 → user-svc 查询量 10x → redis 热 key 驱逐 → cache_hit_rate 降至 12%",
+            3: "级联：user-svc 缓存未命中 → 全量查询数据库 → 连接池=100% → 数据库超时",
+            4: "终态：数据库不可用 → order-svc 失败 → pay-svc 失败 → gateway 所有请求返回 5xx",
         },
         "counterexample": {
-            1: "初始：inventory-svc.east=running(2)",
-            2: "ScaleDown(inventory-svc, east, 1)",
-            3: "ReplicaFailure(inventory-svc, east)",
+            1: "状态：{redis: cache_hit_rate=99%, database: connections=20%, 所有服务: 运行中} — 健康",
+            2: "操作：RedisCacheBurst(user-svc) → {redis: cache_hit_rate=12%} — CacheHitRateFloor 违反（如果不变量存在）",
+            3: "级联：database connections=100% → 超时 → {order-svc: 不可用, pay-svc: 不可用} → 全链路 5xx",
+            4: "有 CacheHitRateFloor：步骤 2 捕获违反 → 触发 RateLimitService(user-svc) + ScaleUp(redis) → 级联被阻止",
         },
         "tla_spec": (
-            "\\* 不降级原则：最低冗余必须在所有可达状态中成立\n"
-            "\\* 包括变更后的故障场景。\n"
-            "MinimumRedundancy ==\n"
-            "    \\A s \\in CriticalPath : TotalReplicas(s) >= MinSafeReplicas[s]\n\n"
-            "\\* TLC 在所有可达状态上检查此不变量。\n"
-            "\\* ScaleDown(inventory-svc, east, 1) 之后，TLC 探索：\n"
-            "\\*   ScaleDown → ReplicaFailure → TotalReplicas = 0 < 2 = MinSafe\n"
-            "\\* 不变量违反证明了该操作不安全\n"
-            "\\* 即使操作后的即时状态看起来没问题。"
+            "--------------------------- MODULE FeedbackLoop ---------------------------\n"
+            "EXTENDS Integers, FiniteSets\n"
+            "CONSTANTS Services, CachedServices, MinCacheHitRate\n"
+            "VARIABLES cacheHitRate, dbConnections, serviceStatus, queryMultiplier\n\n"
+            "vars == <<cacheHitRate, dbConnections, serviceStatus, queryMultiplier>>\n\n"
+            "TypeOK ==\n"
+            "    /\\ cacheHitRate \\in [CachedServices -> 0..100]\n"
+            "    /\\ dbConnections \\in 0..100\n"
+            "    /\\ serviceStatus \\in [Services -> {\"running\", \"degraded\", \"down\"}]\n"
+            "    /\\ queryMultiplier \\in 1..20\n\n"
+            "Init ==\n"
+            "    /\\ cacheHitRate = [s \\in CachedServices |-> 99]\n"
+            "    /\\ dbConnections = 20\n"
+            "    /\\ serviceStatus = [s \\in Services |-> \"running\"]\n"
+            "    /\\ queryMultiplier = 1\n\n"
+            "RedisCacheBurst(s) ==\n"
+            "    /\\ s \\in CachedServices\n"
+            "    /\\ queryMultiplier' = queryMultiplier * 10\n"
+            "    /\\ cacheHitRate' = [cacheHitRate EXCEPT ![s] = 12]\n"
+            "    /\\ dbConnections' = IF dbConnections + 80 > 100 THEN 100 ELSE dbConnections + 80\n"
+            "    /\\ UNCHANGED serviceStatus\n\n"
+            "DBOverload ==\n"
+            "    /\\ dbConnections = 100\n"
+            "    /\\ serviceStatus' = [s \\in Services |-> \"down\"]\n"
+            "    /\\ UNCHANGED <<cacheHitRate, dbConnections, queryMultiplier>>\n\n"
+            "\\* New invariant proposed from post-incident analysis\n"
+            "CacheHitRateFloor ==\n"
+            "    \\A s \\in CachedServices : cacheHitRate[s] >= MinCacheHitRate\n\n"
+            "\\* BMC reverse trace: from terminal state (all down),\n"
+            "\\* shortest path is 3 steps: CacheBurst -> DBOverload -> AllDown\n"
+            "\\* With CacheHitRateFloor, step 1 is caught immediately.\n"
+            "=============================================================================\n"
         ),
     },
 }

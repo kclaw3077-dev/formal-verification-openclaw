@@ -96,15 +96,15 @@ flowchart LR
 | ③ Runtime Ops | Agent decides & executes | BMC | Is this action safe within k steps? |
 | ④ Post-Incident | Analyze fault + prevent recurrence | BMC Reverse + Counterexample | How did it break? Which path can we block? |
 
-### Five Demo Scenarios
+### Five Lifecycle Scenarios
 
-| # | Scenario | What TLA+ Catches | Verification Mode |
-|---|---------|-------------------|-------------------|
-| 1 | Rolling Update Capacity Bottleneck | Hidden chain throughput drop below safety floor | Single Operation |
-| 2 | Hidden Circular Dependency | Deadlock risk on refund path via transitive closure | Single Operation |
-| 3 | Split-Brain During Failover | Race condition window between traffic and DB write switches | Plan Verification |
-| 4 | Concurrent Operations Conflict | Dangerous interleaving of two independently safe operations | Concurrent Ops |
-| 5 | Scale-Down Cascade Effect | Single point of failure created by cost optimization | Single Operation |
+| # | Scenario | Lifecycle Phase | What Formal Methods Catch |
+|---|---------|----------------|--------------------------|
+| 1 | SLO Conflict Detection | ① Realizability Check | Three SLOs form an impossible triangle under dual-AZ deployment |
+| 2 | Elastic Strategy Synthesis | ② Reactive Synthesis | Synthesizer discovers scaling/update mutual exclusion at 8x traffic |
+| 3 | Change Verification — Emergency Hotfix | ③ Runtime BMC | Rolling update + upstream GC pause compound failure |
+| 4 | Fault Interception — Failover Split-Brain | ③ Runtime BMC | Wrong failover ordering creates 30-second split-brain window |
+| 5 | Fault Retrospective & Feedback Loop | ④→① Feedback | 3-step cache cascade path; new invariant prevents recurrence |
 
 ### Features
 
@@ -192,15 +192,15 @@ flowchart LR
 | ③ 在线执行 | Agent 做决策并操作 | BMC | 这步操作 k 步内安全吗？ |
 | ④ 事后复盘 | 分析故障 + 防复发 | BMC 逆向 + 反例分析 | 怎么坏的？哪条路径能堵住？ |
 
-### 五个 Demo 场景
+### 五个生命周期场景
 
-| # | 场景 | TLA+ 发现了什么 | 验证模式 |
-|---|------|---------------|---------|
-| 1 | 滚动更新中的隐式容量瓶颈 | 链路吞吐量隐性降至安全阈值以下 | 单操作验证 |
-| 2 | 隐蔽的循环依赖 | 退款路径上通过传递闭包发现死锁风险 | 单操作验证 |
-| 3 | Failover 中的脑裂 | 流量切换和写入切换之间的竞态条件窗口 | 计划验证 |
-| 4 | 并发操作冲突 | 两个各自安全的操作的危险交错序列 | 并发验证 |
-| 5 | 缩容的级联效应 | 成本优化引入的单点故障 | 单操作验证 |
+| # | 场景 | 生命周期阶段 | 形式化方法发现了什么 |
+|---|------|------------|---------------------|
+| 1 | 规约冲突检测 | ① 可实现性检查 | 三条 SLO 在双 AZ 下构成不可能三角 |
+| 2 | 弹性策略合成 | ② 反应式合成 | 合成器发现 8 倍流量下扩缩容与更新的互斥约束 |
+| 3 | 变更验证——紧急 Hotfix | ③ 运行时 BMC | 滚动更新 + 上游 GC 停顿的复合故障 |
+| 4 | 故障拦截——Failover 脑裂 | ③ 运行时 BMC | 错误的故障转移顺序产生 30 秒脑裂窗口 |
+| 5 | 故障回溯与闭环 | ④→① 反馈闭环 | 缓存击穿 3 步到全站故障；新 invariant 防止复发 |
 
 ---
 

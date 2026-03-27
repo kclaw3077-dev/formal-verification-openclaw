@@ -4,9 +4,10 @@
 
   Models:
     - Services with replica counts and health states
-    - Dependency graph between services
+    - Dependency graph between services (including redis cache layer)
     - Multi-region deployment
     - Agent operations as state transitions
+    - Redis cache hit rate tracking per service
 *)
 
 EXTENDS Integers, Sequences, FiniteSets, TLC
@@ -19,6 +20,9 @@ CONSTANTS
     CriticalPath,       \* Set of services on the critical path
     SLAMaxDowntimeSteps \* Maximum steps a critical service can be unavailable
 
+\* Services that use a redis cache layer
+CachedServices == {"user-svc"}
+
 VARIABLES
     replicas,           \* replicas[s][r] = number of running replicas of service s in region r
     dependencies,       \* dependencies[s] = set of services that s depends on
@@ -27,10 +31,11 @@ VARIABLES
     dbWriteRegion,      \* dbWriteRegion = the region accepting database writes ("both" = split-brain)
     pendingOps,         \* pendingOps = sequence of pending agent operations
     opHistory,          \* opHistory = sequence of completed operations
-    stepCount           \* stepCount = global step counter for temporal reasoning
+    stepCount,          \* stepCount = global step counter for temporal reasoning
+    cacheHitRate        \* cacheHitRate[s] = cache hit percentage (0-100) for service s
 
 vars == <<replicas, dependencies, serviceState, activeRegion,
-          dbWriteRegion, pendingOps, opHistory, stepCount>>
+          dbWriteRegion, pendingOps, opHistory, stepCount, cacheHitRate>>
 
 -----------------------------------------------------------------------------
 (*  Helper operators *)
@@ -82,6 +87,9 @@ ReachableFrom(s, visited, deps) ==
 HasCycle(deps) ==
     \E s \in Services : s \in ReachableFrom(s, {}, deps)
 
+\* Is the cache for service s healthy? (hit rate above 50%)
+CacheHealthy(s) == cacheHitRate[s] >= 50
+
 -----------------------------------------------------------------------------
 (*  Initial State *)
 
@@ -101,6 +109,7 @@ Init ==
     /\ pendingOps = <<>>
     /\ opHistory = <<>>
     /\ stepCount = 0
+    /\ cacheHitRate = [s \in Services |-> 99]
 
 -----------------------------------------------------------------------------
 (*  Agent Operations - State Transitions *)
@@ -110,7 +119,7 @@ RollingUpdate(s, r) ==
     /\ serviceState[s][r] = "running"
     /\ serviceState' = [serviceState EXCEPT ![s][r] = "deploying"]
     /\ replicas' = replicas  \* replicas stay same, but effective capacity drops
-    /\ UNCHANGED <<dependencies, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<dependencies, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "rolling_update", service |-> s, region |-> r])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = Tail(pendingOps)
@@ -119,7 +128,7 @@ RollingUpdate(s, r) ==
 CompleteUpdate(s, r) ==
     /\ serviceState[s][r] = "deploying"
     /\ serviceState' = [serviceState EXCEPT ![s][r] = "running"]
-    /\ UNCHANGED <<replicas, dependencies, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<replicas, dependencies, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "complete_update", service |-> s, region |-> r])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -130,7 +139,7 @@ ScaleDown(s, r, n) ==
     /\ n > 0
     /\ n <= replicas[s][r]
     /\ replicas' = [replicas EXCEPT ![s][r] = replicas[s][r] - n]
-    /\ UNCHANGED <<dependencies, serviceState, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<dependencies, serviceState, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "scale_down", service |-> s, region |-> r, amount |-> n])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -140,7 +149,7 @@ ScaleUp(s, r, n) ==
     /\ n > 0
     /\ replicas[s][r] + n <= MaxReplicas
     /\ replicas' = [replicas EXCEPT ![s][r] = replicas[s][r] + n]
-    /\ UNCHANGED <<dependencies, serviceState, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<dependencies, serviceState, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "scale_up", service |-> s, region |-> r, amount |-> n])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -150,7 +159,7 @@ AddDependency(s, target) ==
     /\ target \notin dependencies[s]
     /\ s # target
     /\ dependencies' = [dependencies EXCEPT ![s] = dependencies[s] \cup {target}]
-    /\ UNCHANGED <<replicas, serviceState, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<replicas, serviceState, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "add_dep", from |-> s, to |-> target])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -159,7 +168,7 @@ AddDependency(s, target) ==
 SwitchTraffic(targetRegion) ==
     /\ activeRegion # targetRegion
     /\ activeRegion' = targetRegion
-    /\ UNCHANGED <<replicas, dependencies, serviceState, dbWriteRegion>>
+    /\ UNCHANGED <<replicas, dependencies, serviceState, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "switch_traffic", to |-> targetRegion])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -168,7 +177,7 @@ SwitchTraffic(targetRegion) ==
 SwitchDBWrites(targetRegion) ==
     /\ dbWriteRegion # targetRegion
     /\ dbWriteRegion' = targetRegion
-    /\ UNCHANGED <<replicas, dependencies, serviceState, activeRegion>>
+    /\ UNCHANGED <<replicas, dependencies, serviceState, activeRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "switch_db_writes", to |-> targetRegion])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
@@ -179,10 +188,29 @@ ReplicaFailure(s, r) ==
     /\ replicas' = [replicas EXCEPT ![s][r] = replicas[s][r] - 1]
     /\ serviceState' = [serviceState EXCEPT ![s][r] =
         IF replicas[s][r] - 1 = 0 THEN "down" ELSE serviceState[s][r]]
-    /\ UNCHANGED <<dependencies, activeRegion, dbWriteRegion>>
+    /\ UNCHANGED <<dependencies, activeRegion, dbWriteRegion, cacheHitRate>>
     /\ opHistory' = Append(opHistory, [op |-> "replica_failure", service |-> s, region |-> r])
     /\ stepCount' = stepCount + 1
     /\ pendingOps' = pendingOps
+
+\* Redis cache burst: cache miss storm drops hit rate to 12%
+RedisCacheBurst(s) ==
+    /\ s \in CachedServices
+    /\ cacheHitRate[s] >= 50  \* only trigger if cache is currently healthy
+    /\ cacheHitRate' = [cacheHitRate EXCEPT ![s] = 12]
+    /\ UNCHANGED <<replicas, dependencies, serviceState, activeRegion, dbWriteRegion>>
+    /\ opHistory' = Append(opHistory, [op |-> "redis_cache_burst", service |-> s])
+    /\ stepCount' = stepCount + 1
+    /\ pendingOps' = pendingOps
+
+\* Rate limit a service in a specific region
+RateLimitService(s, r) ==
+    /\ serviceState[s][r] = "running"
+    /\ serviceState' = [serviceState EXCEPT ![s][r] = "degraded"]
+    /\ UNCHANGED <<replicas, dependencies, activeRegion, dbWriteRegion, cacheHitRate>>
+    /\ opHistory' = Append(opHistory, [op |-> "rate_limit", service |-> s, region |-> r])
+    /\ stepCount' = stepCount + 1
+    /\ pendingOps' = IF pendingOps = <<>> THEN <<>> ELSE Tail(pendingOps)
 
 -----------------------------------------------------------------------------
 (*  Next state relation *)
@@ -196,6 +224,8 @@ Next ==
     \/ \E r \in Regions : SwitchTraffic(r)
     \/ \E r \in Regions : SwitchDBWrites(r)
     \/ \E s \in Services, r \in Regions : ReplicaFailure(s, r)
+    \/ \E s \in Services : RedisCacheBurst(s)
+    \/ \E s \in Services, r \in Regions : RateLimitService(s, r)
 
 Spec == Init /\ [][Next]_vars
 

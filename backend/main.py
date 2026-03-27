@@ -23,6 +23,7 @@ TLA_DIR = Path(__file__).parent.parent / "tla"
 
 @app.get("/api/scenarios")
 def api_list_scenarios(lang: str = Query("en", regex="^(en|zh)$")):
+    """Return scenario list including lifecycle phase for each scenario."""
     return list_scenarios(lang)
 
 

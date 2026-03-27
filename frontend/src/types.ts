@@ -1,5 +1,5 @@
 export type ServiceState = "running" | "deploying" | "degraded" | "down";
-export type VerificationResult = "SAFE" | "UNSAFE" | "UNKNOWN";
+export type VerificationResult = "SAFE" | "UNSAFE" | "UNKNOWN" | "REALIZABLE" | "UNREALIZABLE";
 
 export interface ServiceInfo {
   name: string;
@@ -7,6 +7,7 @@ export interface ServiceInfo {
   state: Record<string, ServiceState>;
   dependencies: string[];
   is_critical: boolean;
+  metrics?: Record<string, number> | null;
 }
 
 export interface InfrastructureState {
@@ -49,6 +50,8 @@ export interface VerificationReport {
   tla_spec_used: string;
   tla_spec_refs: TlaSpecRef[];
   counterexample_trace: TraceStep[];
+  synthesized_controller?: Record<string, unknown> | null;
+  conflict_proof?: string[] | null;
 }
 
 export interface ScenarioStep {
@@ -78,10 +81,12 @@ export interface Scenario {
   initial_state: InfrastructureState;
   steps: ScenarioStep[];
   tla_spec: string;
+  phase?: string;
 }
 
 export interface ScenarioSummary {
   id: string;
   title: string;
   subtitle: string;
+  phase?: string;
 }

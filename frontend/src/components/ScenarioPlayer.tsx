@@ -17,7 +17,11 @@ export function ScenarioPlayer({ steps, activeStep, onStepChange }: Props) {
         {steps.map((s, i) => {
           const result = s.verification?.result;
           const statusClass =
-            result === "UNSAFE" ? "step-unsafe" : result === "SAFE" ? "step-safe" : "";
+            result === "UNSAFE" || result === "UNREALIZABLE"
+              ? "step-unsafe"
+              : result === "SAFE" || result === "REALIZABLE"
+              ? "step-safe"
+              : "";
           return (
             <button
               key={s.step_id}
@@ -37,11 +41,19 @@ export function ScenarioPlayer({ steps, activeStep, onStepChange }: Props) {
           {step.verification && (
             <span
               className={`result-badge ${
-                step.verification.result === "SAFE" ? "result-safe" : "result-unsafe"
+                step.verification.result === "SAFE" || step.verification.result === "REALIZABLE"
+                  ? "result-safe"
+                  : "result-unsafe"
               }`}
             >
-              {step.verification.result === "SAFE" ? "\u2713 " : "\u2717 "}
-              {step.verification.result === "SAFE" ? t("verification.safe") : t("verification.unsafe")}
+              {step.verification.result === "SAFE" || step.verification.result === "REALIZABLE" ? "\u2713 " : "\u2717 "}
+              {step.verification.result === "REALIZABLE"
+                ? t("verification.realizable")
+                : step.verification.result === "UNREALIZABLE"
+                ? t("verification.unrealizable")
+                : step.verification.result === "SAFE"
+                ? t("verification.safe")
+                : t("verification.unsafe")}
             </span>
           )}
         </div>

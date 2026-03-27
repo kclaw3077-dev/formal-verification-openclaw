@@ -3,13 +3,42 @@ import { useLang } from "../i18n/context";
 
 export function VerificationPanel({ report }: { report: VerificationReport }) {
   const { t } = useLang();
-  const isSafe = report.result === "SAFE";
+  const result = report.result;
+  const isPositive = result === "SAFE" || result === "REALIZABLE";
+  const isRealizable = result === "REALIZABLE";
+  const isUnrealizable = result === "UNREALIZABLE";
+
+  const panelClass = isRealizable
+    ? "vp-realizable"
+    : isUnrealizable
+    ? "vp-unrealizable"
+    : isPositive
+    ? "vp-safe"
+    : "vp-unsafe";
+
+  const iconClass = isPositive ? "icon-safe" : "icon-unsafe";
+
+  const resultLabel = isRealizable
+    ? t("verification.realizable")
+    : isUnrealizable
+    ? t("verification.unrealizable")
+    : isPositive
+    ? t("verification.safe")
+    : t("verification.unsafe");
+
+  const resultDesc = isRealizable
+    ? t("verification.realizable.desc")
+    : isUnrealizable
+    ? t("verification.unrealizable.desc", { count: (report as any).conflict_proof?.length ?? 0 })
+    : isPositive
+    ? t("verification.safe.desc")
+    : t("verification.unsafe.desc", { count: report.violations.length });
 
   return (
-    <div className={`verification-panel ${isSafe ? "vp-safe" : "vp-unsafe"}`}>
+    <div className={`verification-panel ${panelClass}`}>
       <div className="vp-header">
-        <div className={`vp-icon ${isSafe ? "icon-safe" : "icon-unsafe"}`}>
-          {isSafe ? (
+        <div className={`vp-icon ${iconClass}`}>
+          {isPositive ? (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M20 6L9 17l-5-5" />
             </svg>
@@ -20,12 +49,8 @@ export function VerificationPanel({ report }: { report: VerificationReport }) {
           )}
         </div>
         <div>
-          <div className="vp-result">{isSafe ? t("verification.safe") : t("verification.unsafe")}</div>
-          <div className="vp-subtitle">
-            {isSafe
-              ? t("verification.safe.desc")
-              : t("verification.unsafe.desc", { count: report.violations.length })}
-          </div>
+          <div className="vp-result">{resultLabel}</div>
+          <div className="vp-subtitle">{resultDesc}</div>
         </div>
       </div>
 
@@ -58,6 +83,40 @@ export function VerificationPanel({ report }: { report: VerificationReport }) {
               <p className="violation-desc">{v.description}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Conflict proof for UNREALIZABLE results */}
+      {isUnrealizable && (report as any).conflict_proof?.length > 0 && (
+        <div className="conflict-proof">
+          <h4>{t("verification.conflictProof")}</h4>
+          <ul>
+            {(report as any).conflict_proof.map((constraint: string, i: number) => (
+              <li key={i}>{constraint}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Synthesized controller display */}
+      {(report as any).synthesized_controller && (
+        <div className="synthesized-controller">
+          <h4>{t("verification.synthesizedController")}</h4>
+          <div className="sc-stats">
+            <span className="sc-stat">
+              States: <strong>{(report as any).synthesized_controller.states?.length ?? 0}</strong>
+            </span>
+            <span className="sc-stat">
+              Transitions: <strong>{(report as any).synthesized_controller.transitions?.length ?? 0}</strong>
+            </span>
+          </div>
+          {(report as any).synthesized_controller.guards?.length > 0 && (
+            <div className="sc-guards">
+              {(report as any).synthesized_controller.guards.map((guard: string, i: number) => (
+                <span key={i} className="sc-guard">{guard}</span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

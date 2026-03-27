@@ -8,6 +8,9 @@
 
 EXTENDS SREInfrastructure
 
+CONSTANTS
+    CacheHitRateMin     \* Minimum acceptable cache hit rate (e.g. 50)
+
 -----------------------------------------------------------------------------
 (*  SAFETY PROPERTIES (Invariants - must hold in every reachable state) *)
 
@@ -59,6 +62,12 @@ NoSimultaneousUpdatesOnChain ==
         ~(\E r1, r2 \in Regions :
             serviceState[s][r1] = "deploying" /\ serviceState[t][r2] = "deploying")
 
+\* Property 8: Cache Hit Rate Floor
+\* Every cached service must maintain a cache hit rate above the minimum threshold.
+\* A low hit rate indicates a cache miss storm that could overwhelm the database.
+CacheHitRateFloor ==
+    \A s \in CachedServices : cacheHitRate[s] >= CacheHitRateMin
+
 \* Combined Safety Invariant
 SafetyInvariant ==
     /\ NoCyclicDependencies
@@ -66,6 +75,7 @@ SafetyInvariant ==
     /\ NoSplitBrain
     /\ AvailabilityFloor
     /\ NoSimultaneousUpdatesOnChain
+    /\ CacheHitRateFloor
 
 -----------------------------------------------------------------------------
 (*  LIVENESS PROPERTIES (Temporal - something good eventually happens) *)
